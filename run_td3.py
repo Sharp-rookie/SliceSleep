@@ -9,46 +9,19 @@ from datetime import datetime
 
 from utils import time_delta
 from models import TD3
-from env import Environment, current_t
+from env import Environment
 
 
-class ReplayBuffer:
-    def __init__(self, max_size=5e5):
-        self.buffer = []
-        self.max_size = int(max_size)
-        self.size = 0
-    
-    def add(self, transition):
-        self.size +=1
-        # transiton is tuple of (state, action, reward, next_state, done)
-        self.buffer.append(transition)
-    
-    def sample(self, batch_size):
-        # delete 1/5th of the buffer when full
-        if self.size > self.max_size:
-            del self.buffer[0:int(self.size/5)]
-            self.size = len(self.buffer)
-        
-        indexes = np.random.randint(0, len(self.buffer), size=batch_size)
-        state, action, reward, next_state, done = [], [], [], [], []
-        
-        for i in indexes:
-            s, a, r, s_, d = self.buffer[i]
-            state.append(np.array(s, copy=False))
-            action.append(np.array(a, copy=False))
-            reward.append(np.array(r, copy=False))
-            next_state.append(np.array(s_, copy=False))
-            done.append(np.array(d, copy=False))
-        
-        return np.array(state), np.array(action), np.array(reward), np.array(next_state), np.array(done)
+ue_n = 12 # UE数量，等效于负载等级
+log_dir = f"log/ue_{ue_n}/TD3/"
+test_dir = f"test/ue_{ue_n}/TD3/"
 
 
 def train():
     print("============================================================================================")
 
-    ####### initialize environment hyperparameters ######
+    ####### hyperparameters ######
 
-    env_name = "td3_env"
     state_n = 6
     action_space_n = 3
     action_space = [-1, 0, 1]
@@ -69,35 +42,12 @@ def train():
 
     #####################################################
 
-    ue_number = 12
-    env = Environment(ue_number=[ue_number]*3)
-    # state space dimension
-    state_dim = state_n
-    # action space dimension
-    action_dim = action_space_n
+    env = Environment(ue_number=[ue_n]*3)
+    state_dim = state_n # state space dimension
+    action_dim = action_space_n # action space dimension
 
-    ###################### logging ######################
-
-    #### log files for multiple runs are NOT overwritten
-    log_dir = f"log/TD3_logs_{ue_number}/"
-    if not os.path.exists(log_dir):
-          os.makedirs(log_dir)
-    #### get number of log files in log directory
-    run_num = 0
-    current_num_files = next(os.walk(log_dir))[2]
-    run_num = len(current_num_files)
-    #### create new log file for each run
-    log_f_name = log_dir + "log_" + str(run_num) + ".csv"
-    print("logging at : " + log_f_name)
-    
-    ################### checkpointing ###################
-
-    run_num_pretrained = 0
-    directory = f"checkpoints/TD3_{ue_number}/{current_t}/"
-    if not os.path.exists(directory):
-          os.makedirs(directory)
-    checkpoint_path = "TD3_{}".format(run_num_pretrained)
-    print("save checkpoint path : " + checkpoint_path)
+    log_file = log_dir + "log" + ".csv"
+    os.makedirs(log_dir, exist_ok=True)
     
     ################# training procedure ################
 
@@ -106,22 +56,8 @@ def train():
     td3_agent2 = TD3(lr, state_dim, action_dim, max(action_space))
     td3_agent3 = TD3(lr, state_dim, action_dim, max(action_space))
 
-    # retrain
-    # td3_agent1.load('checkpoints/TD3_12/2022_11_17_13_06_22', 'TD3_slice1_81')
-    # td3_agent2.load('checkpoints/TD3_12/2022_11_17_13_06_22', 'TD3_slice2_81')
-    # td3_agent3.load('checkpoints/TD3_12/2022_11_17_13_06_22', 'TD3_slice3_81')
-    # run_num_pretrained = 81
-
-    # memory pool
-    replay_buffer1 = ReplayBuffer()
-    replay_buffer2 = ReplayBuffer()
-    replay_buffer3 = ReplayBuffer()
-    
-    # track total training time
-    start_time = datetime.now().replace(microsecond=0)
-
     # logging file
-    log_f = open(log_f_name,"w+")
+    log_f = open(log_file,"w+")
     log_f.write('episode,reward1,reward2,reward3\n')
 
     # tqdm
@@ -129,6 +65,7 @@ def train():
     pbar = tqdm(range(max_timesteps), desc='timesteps', bar_format=bar_format)
     
     # training loop
+    start_time = datetime.now().replace(microsecond=0)
     for episode in range(1, max_episodes+1):
         
         state = torch.tensor([0.0] * state_dim)
@@ -152,9 +89,9 @@ def train():
             # take action in env:
             next_state, rewards, dones = env.step([action_space[np.argmax(actions[0])], action_space[np.argmax(actions[1])], action_space[np.argmax(actions[2])]])
             next_state = torch.tensor([float(i) for i in next_state])
-            replay_buffer1.add((state, actions[0], rewards[0], next_state, float(dones[0])))
-            replay_buffer2.add((state, actions[1], rewards[1], next_state, float(dones[1])))
-            replay_buffer3.add((state, actions[2], rewards[2], next_state, float(dones[2])))
+            td3_agent1.buffer.add((state, actions[0], rewards[0], next_state, float(dones[0])))
+            td3_agent2.buffer.add((state, actions[1], rewards[1], next_state, float(dones[1])))
+            td3_agent3.buffer.add((state, actions[2], rewards[2], next_state, float(dones[2])))
             state = next_state
             
             for i in range(3):
@@ -168,19 +105,19 @@ def train():
             
             # if episode is done then update td3_agent:
             if t==(max_timesteps-1):
-                td3_agent1.update(replay_buffer1, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
-                td3_agent2.update(replay_buffer2, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
-                td3_agent3.update(replay_buffer3, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                td3_agent1.update(td3_agent1.buffer, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                td3_agent2.update(td3_agent2.buffer, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                td3_agent3.update(td3_agent3.buffer, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                 pbar.reset()
                 break
             for i, done in enumerate(dones):
                 if done:
                     if i == 0:
-                        td3_agent1.update(replay_buffer1, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                        td3_agent1.update(td3_agent1.buffer, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                     elif i == 1:
-                        td3_agent2.update(replay_buffer2, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                        td3_agent2.update(td3_agent2.buffer, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                     elif i == 2:
-                        td3_agent3.update(replay_buffer3, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                        td3_agent3.update(td3_agent3.buffer, t, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                     env.gnb.TD_policy.buckets[i].offset = 1
         
         # logging updates:
@@ -189,10 +126,11 @@ def train():
         
         # save the model
         if episode % save_interval == 0:
-            run_num_pretrained += 1
-            td3_agent1.save(directory, "TD3_slice{}_{}".format(1, run_num_pretrained))
-            td3_agent2.save(directory, "TD3_slice{}_{}".format(2, run_num_pretrained))
-            td3_agent3.save(directory, "TD3_slice{}_{}".format(3, run_num_pretrained))
+            ckpt_dir = log_dir + "checkpoint/episode" + str(episode) + "/"
+            os.makedirs(ckpt_dir, exist_ok=True)
+            td3_agent1.save(ckpt_dir, "slice1")
+            td3_agent2.save(ckpt_dir, "slice2")
+            td3_agent3.save(ckpt_dir, "slice3")
         
         # noise decay
         if episode % exploration_noise_decay_freq == 0:
@@ -219,25 +157,15 @@ def test():
     
     #####################################################
 
-    ue_number = 15
-    env = Environment(ue_number=[ue_number]*3)
+    env = Environment(ue_number=[ue_n]*3)
     state_dim = state_n
     action_dim = action_space_n
     max_action = max(action_space)
 
-    #### log files for multiple runs are NOT overwritten
-    log_dir = f"test/TD3_logs_{ue_number}/"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    #### get number of log files in log directory
-    run_num = 0
-    current_num_files = next(os.walk(log_dir))[2]
-    run_num = len(current_num_files)
-    #### create new log file for each run
-    log_f_name = log_dir + "log_" + str(run_num) + ".csv"
-    print("logging at : " + log_f_name)
+    os.makedirs(test_dir, exist_ok=True)
+    log_file = test_dir + "log.csv"
 
-    ################# training procedure ################
+    ################# testing procedure ################
 
     # initialize TD3 agents
     td3_agent1 = TD3(0, state_dim, action_dim, max_action)
@@ -251,7 +179,7 @@ def test():
     start_time = datetime.now().replace(microsecond=0)
 
     # logging file
-    log_f = open(log_f_name,"w+")
+    log_f = open(log_file, "w+")
     log_f.write('episode,timestep,offset1,datavolume1,delay1,offset2,datavolume2,delay2,offset3,datavolume3,delay3\n')
 
     # tqdm
@@ -306,10 +234,11 @@ def test():
 
     log_f.close()
     env.close()
-    plot_test_td3(log_f_name, ue_number)
-    return log_f_name
+    plot_test_td3(log_file, ue_n)
+    return log_file
 
-def plot_test_td3(path, ue_number):
+
+def plot_test_td3(path, ue_):
     log = pd.read_csv(path)
     plt.figure(figsize=(36, 12))
     plt.title('Test')
@@ -344,8 +273,7 @@ def plot_test_td3(path, ue_number):
         plt.plot(t, qos_ratio, label='qos satification')
         plt.legend()
 
-    plt.savefig(f'test/td3_ue{ue_number}.jpg', dpi=300)
-    print('save line graph at test/td3.jpg')
+    plt.savefig(test_dir + 'result.jpg', dpi=300)
 
 
 if __name__ == '__main__':
