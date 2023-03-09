@@ -1,25 +1,29 @@
 # -*- coding: utf-8 -*-
 import os
 import torch
-import numpy as np
-from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
+from tqdm import tqdm
 from datetime import datetime
 
 from utils import time_delta
 from models import PPO
-from env import Environment, current_t
+from env import Environment
+
+
+ue_n = 12 # UE数量，等效于负载等级，范围：3，6，9，12，15
+log_dir = f"log/ue_{ue_n}/PPO/"
+test_dir = f"test/ue_{ue_n}/PPO/"
 
 
 def train():
 
-    ####### initialize environment hyperparameters ######
+    ####### hyperparameters ######
 
-    env_name = "ppo_env"
     has_continuous_action_space = False        # continuous action space; else discrete
-    action_space_n = 3
     state_n = 6
+    action_space_n = 3
     action_space = [-1, 0, 1]
     max_ep_len = 150                           # max timesteps in one episode
     max_training_timesteps = max_ep_len * 1e3  # break training loop if timeteps > max_training_timesteps
@@ -29,9 +33,6 @@ def train():
     action_std_decay_rate = 0.05               # linearly decay action_std (action_std = action_std - action_std_decay_rate)
     min_action_std = 0.1                       # minimum action_std (stop decay after action_std <= min_action_std)
     action_std_decay_freq = int(5e3)           # action_std decay frequency (in num timesteps)
-
-    ################ PPO hyperparameters ################
-
     update_timestep = max_ep_len      # update policy every n timesteps
     K_epochs = 80                     # update policy for K epochs in one PPO update
     eps_clip = 0.2                    # clip parameter for PPO
@@ -41,34 +42,12 @@ def train():
 
     #####################################################
 
-    ue_number = 9
-    env = Environment(ue_number=[ue_number]*3)
-    # state space dimension
-    state_dim = state_n
-    # action space dimension
-    action_dim = action_space_n
+    env = Environment(ue_number=[ue_n]*3)
+    state_dim = state_n # state space dimension
+    action_dim = action_space_n # action space dimension
 
-    ###################### logging ######################
-
-    #### log files for multiple runs are NOT overwritten
-    log_dir = f"log/PPO_logs_{ue_number}/"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    #### get number of log files in log directory
-    run_num = 0
-    current_num_files = next(os.walk(log_dir))[2]
-    run_num = len(current_num_files)
-    #### create new log file for each run
-    log_f_name = log_dir + "log_" + str(run_num) + ".csv"
-    print("logging at : " + log_f_name)
-
-    ################### checkpointing ###################
-
-    run_num_pretrained = 0      #### change this to prevent overwriting weights in same env_name folder
-    directory = f"checkpoints/PPO_{ue_number}/{current_t}/"
-    if not os.path.exists(directory):
-          os.makedirs(directory)
-    print("save checkpoint path : " + directory)
+    log_file = log_dir + "log" + ".csv"
+    os.makedirs(log_dir, exist_ok=True)
 
     ################# training procedure ################
 
@@ -90,7 +69,7 @@ def train():
     start_time = datetime.now().replace(microsecond=0)
 
     # logging file
-    log_f = open(log_f_name,"w+")
+    log_f = open(log_file, "w+")
     log_f.write('episode,timestep,reward1,datavolume1,reward2,datavolume2,reward3,datavolume3\n')
 
     # printing and logging variables
@@ -134,7 +113,6 @@ def train():
             ppo_agent2.buffer.is_terminals.append(dones[1])
             ppo_agent3.buffer.is_terminals.append(dones[2])
 
-            time_step +=1
             log_running_reward1 += rewards[0]
             log_running_datavolume1 += np.mean(env.datavolume[0])
             log_running_reward2 += rewards[1]
@@ -148,10 +126,11 @@ def train():
             pbar.update()
 
             # update PPO agent
+            time_step +=1
             if time_step % update_timestep == 0:
-                # ppo_agent1.update()
+                ppo_agent1.update()
                 ppo_agent2.update()
-                # ppo_agent3.update()
+                ppo_agent3.update()
                 pbar.reset()
 
             # if continuous action space; then decay action std of ouput action distribution
@@ -184,13 +163,11 @@ def train():
 
             # save model weights
             if time_step % save_model_freq == 0:
-                # checkpoint_path = directory + "PPO_slice{}_{}.pth".format(0, run_num_pretrained)
-                # ppo_agent1.save(checkpoint_path)
-                checkpoint_path = directory + "PPO_slice{}_{}.pth".format(1, run_num_pretrained)
-                ppo_agent2.save(checkpoint_path)
-                # checkpoint_path = directory + "PPO_slice{}_{}.pth".format(2, run_num_pretrained)
-                # ppo_agent3.save(checkpoint_path)
-                run_num_pretrained += 1
+                ckpt_dir = log_dir + "checkpoint/time_step" + str(time_step) + "/"
+                os.makedirs(ckpt_dir, exist_ok=True)
+                ppo_agent1.save(ckpt_dir + 'slice1.pth')
+                ppo_agent2.save(ckpt_dir + 'slice2.pth')
+                ppo_agent3.save(ckpt_dir + 'slice3.pth')
 
             # break; if the episode is over
             for i, done in enumerate(dones):
@@ -218,10 +195,9 @@ def test():
     max_ep_len = 1500                           # max timesteps in one episode
     n_episodes = 1                             # break testing loop if timeteps > max_testing_timesteps
 
-    ################# testing procedure ################
+    #####################################################
 
-    ue_number = 9
-    env = Environment(ue_number=[ue_number]*3)
+    env = Environment(ue_number=[ue_n]*3)
     state_dim = state_n
     action_dim = action_space_n
 
@@ -236,22 +212,10 @@ def test():
     # track total testing time
     start_time = datetime.now().replace(microsecond=0)
 
-    ###################### logging ######################
-
-    #### log files for multiple runs are NOT overwritten
-    log_dir = f"test/PPO_logs_{ue_number}/"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    #### get number of log files in log directory
-    run_num = 0
-    current_num_files = next(os.walk(log_dir))[2]
-    run_num = len(current_num_files)
-    #### create new log file for each run
-    log_f_name = log_dir + "log_" + str(run_num) + ".csv"
-    print("logging at : " + log_f_name)
-
     # logging file
-    log_f = open(log_f_name,"w+")
+    os.makedirs(test_dir, exist_ok=True)
+    log_file = test_dir + "log.csv"
+    log_f = open(log_file, "w+")
     log_f.write('episode,timestep,offset1,datavolume1,delay1,offset2,datavolume2,delay2,offset3,datavolume3,delay3\n')
 
     # tqdm
@@ -306,11 +270,11 @@ def test():
 
     log_f.close()
     env.close()
-    plot_test_ppo(log_f_name, ue_number)
-    return log_f_name
+    plot_test_ppo(log_file)
+    return log_file
 
 
-def plot_test_ppo(path, ue_number):
+def plot_test_ppo(path):
     log = pd.read_csv(path)
     plt.figure(figsize=(36, 12))
     plt.title('Test')
@@ -320,7 +284,7 @@ def plot_test_ppo(path, ue_number):
     offset = [log['offset1'], log['offset2'], log['offset3']]
     delay = [log['delay1'], log['delay2'], log['delay3']]
 
-    qos = [30, 100, 200]
+    qos = [30, 300, 100]
     for i in range(3):
 
         qos_count = 0
@@ -345,8 +309,7 @@ def plot_test_ppo(path, ue_number):
         plt.plot(t, qos_ratio, label='qos satification')
         plt.legend()
 
-    plt.savefig(f'test/ppo_{ue_number}.jpg', dpi=300)
-    print('save line graph at test/ppo.jpg')
+    plt.savefig(test_dir + 'result.jpg', dpi=300)
 
 
 if __name__ == '__main__':

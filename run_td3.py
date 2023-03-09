@@ -12,7 +12,7 @@ from models import TD3
 from env import Environment
 
 
-ue_n = 12 # UE数量，等效于负载等级
+ue_n = 12 # UE数量，等效于负载等级，范围：3，6，9，12，15
 log_dir = f"log/ue_{ue_n}/TD3/"
 test_dir = f"test/ue_{ue_n}/TD3/"
 
@@ -37,8 +37,8 @@ def train():
     policy_noise = 0.2          # target policy smoothing noise
     noise_clip = 0.5
     policy_delay = 2            # delayed policy updates parameter
-    max_episodes = 10000         # max num of episodes
-    max_timesteps = 150          # max timesteps in one episode
+    max_episodes = 10000        # max num of episodes
+    max_timesteps = 150         # max timesteps in one episode
 
     #####################################################
 
@@ -48,7 +48,7 @@ def train():
 
     log_file = log_dir + "log" + ".csv"
     os.makedirs(log_dir, exist_ok=True)
-    
+
     ################# training procedure ################
 
     # initialize a TD3 agent
@@ -57,7 +57,7 @@ def train():
     td3_agent3 = TD3(lr, state_dim, action_dim, max(action_space))
 
     # logging file
-    log_f = open(log_file,"w+")
+    log_f = open(log_file, "w+")
     log_f.write('episode,reward1,reward2,reward3\n')
 
     # tqdm
@@ -74,12 +74,12 @@ def train():
         env.reset()
 
         env.gnb.transP = 46
-        
+
         for t in range(max_timesteps):
-            
+
             # tqdm
             pbar.set_description(f"\33[36m🌌 Epoch {episode}/{max_episodes}")
-            
+
             # select action and add exploration noise:
             actions = [td3_agent1.select_action(state), td3_agent2.select_action(state), td3_agent3.select_action(state)]
             for i in range(3):
@@ -154,7 +154,7 @@ def test():
     action_space = [-1, 0, 1]
     max_ep_len = 1500                           # max timesteps in one episode
     n_episodes = 1                             # break training loop if timeteps > max_training_timesteps
-    
+
     #####################################################
 
     env = Environment(ue_number=[ue_n]*3)
@@ -162,8 +162,6 @@ def test():
     action_dim = action_space_n
     max_action = max(action_space)
 
-    os.makedirs(test_dir, exist_ok=True)
-    log_file = test_dir + "log.csv"
 
     ################# testing procedure ################
 
@@ -175,10 +173,12 @@ def test():
     td3_agent2.load_actor(path2)
     td3_agent3.load_actor(path3)
 
-    # track total training time
+    # track total testing time
     start_time = datetime.now().replace(microsecond=0)
 
     # logging file
+    os.makedirs(test_dir, exist_ok=True)
+    log_file = test_dir + "log.csv"
     log_f = open(log_file, "w+")
     log_f.write('episode,timestep,offset1,datavolume1,delay1,offset2,datavolume2,delay2,offset3,datavolume3,delay3\n')
 
@@ -234,11 +234,11 @@ def test():
 
     log_f.close()
     env.close()
-    plot_test_td3(log_file, ue_n)
+    plot_test_td3(log_file)
     return log_file
 
 
-def plot_test_td3(path, ue_):
+def plot_test_td3(path):
     log = pd.read_csv(path)
     plt.figure(figsize=(36, 12))
     plt.title('Test')
