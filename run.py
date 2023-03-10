@@ -13,6 +13,7 @@ if __name__ == '__main__':
     parser.add_argument('--ue_num', type=int, default=3, help='UE Number: 3, 6, 9, 12, 15')
     parser.add_argument('--device', type=str, default='cuda:1', help='Device')
     parser.add_argument('--max_episode', type=int, default=10000, help='Max training episodes')
+    parser.add_argument('--max_iter', type=int, default=150, help='Max iteration in one episode')
     parser.add_argument('--path1', type=str, default='log/ue_3/TD3/checkpoints/2022_11_17_13_06_26/TD3_slice1_60_actor.pth', help='Slice1 agent weight file path')
     parser.add_argument('--path2', type=str, default='log/ue_3/TD3/checkpoints/2022_11_17_13_06_26/TD3_slice2_60_actor.pth', help='Slice2 agent weight file path')
     parser.add_argument('--path3', type=str, default='log/ue_3/TD3/checkpoints/2022_11_17_13_06_26/TD3_slice3_60_actor.pth', help='Slice3 agent weight file path')
@@ -25,9 +26,9 @@ if __name__ == '__main__':
 
     # train
     if args.model == 'TD3':
-        md.train_td3(env, log_dir=log_dir, max_episodes=args.max_episode, device=args.device)
+        md.train_td3(env, log_dir=log_dir, max_episodes=args.max_episode, max_iters=args.max_iter, device=args.device)
     elif args.model == 'PPO':
-        md.train_ppo(env, log_dir=log_dir, max_episodes=args.max_episode, device=args.device)
+        md.train_ppo(env, log_dir=log_dir, max_episodes=args.max_episode, max_iters=args.max_iter, device=args.device)
     
     # test
     if args.model == 'TD3':

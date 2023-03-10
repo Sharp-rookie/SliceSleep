@@ -373,7 +373,6 @@ class gNB(object):
         if any(number) < 0:
             print("Invalid ue number!\n")
             assert(False)
-        print(number)
 
         assert(self.UEs == [])
         for i in range(number[0]):

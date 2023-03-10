@@ -144,6 +144,8 @@ def test_td3(
         path3 = f'checkpoints/TD3_15/2022_11_17_13_06_26/TD3_slice3_60_actor.pth'
     ):
 
+    print("============================================================================================")
+
     ####### initialize environment hyperparameters ######
 
     state_dim = 6

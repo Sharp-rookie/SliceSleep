@@ -136,6 +136,8 @@ def test_ppo(
         path3 = f'checkpoints/PPO_15/2022_11_17_13_06_26/PPO_slice3_60_actor.pth'
     ):
 
+    print("============================================================================================")
+
     ####### initialize environment hyperparameters ######
 
     state_dim = 6
