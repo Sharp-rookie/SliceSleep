@@ -5,8 +5,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
 class ReplayBuffer:
     def __init__(self, max_size=5e5):
@@ -15,9 +13,8 @@ class ReplayBuffer:
         self.size = 0
     
     def add(self, transition):
-        self.size +=1
-        # transiton is tuple of (state, action, reward, next_state, done)
-        self.buffer.append(transition)
+        self.size += 1
+        self.buffer.append(transition) # transiton is tuple of (state, action, reward, next_state, done)
     
     def sample(self, batch_size):
         # delete 1/5th of the buffer when full
@@ -30,14 +27,20 @@ class ReplayBuffer:
         
         for i in indexes:
             s, a, r, s_, d = self.buffer[i]
-            state.append(np.array(s, copy=False))
-            action.append(np.array(a, copy=False))
-            reward.append(np.array(r, copy=False))
-            next_state.append(np.array(s_, copy=False))
-            done.append(np.array(d, copy=False))
+            state.append(s.unsqueeze(0))
+            action.append(a.unsqueeze(0))
+            reward.append(r.unsqueeze(0))
+            next_state.append(s_.unsqueeze(0))
+            done.append(d.unsqueeze(0))
         
-        return np.array(state), np.array(action), np.array(reward), np.array(next_state), np.array(done)
-    
+        state = torch.concat(state,dim=0).reshape(batch_size,-1).detach()
+        action = torch.concat(action,dim=0).reshape(batch_size,-1).detach()
+        reward = torch.concat(reward,dim=0).reshape(batch_size,-1).detach()
+        next_state = torch.concat(next_state,dim=0).reshape(batch_size,-1).detach()
+        done = torch.concat(done,dim=0).reshape(batch_size,-1).detach()
+                
+        return state, action, reward, next_state, done
+
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action, is_continuous):
@@ -92,46 +95,42 @@ class Critic(nn.Module):
         return q
     
 
-class TD3:
-    def __init__(self, lr, state_dim, action_dim, max_action, is_continuous=False):
-
-        self.name = 'td3'
+class TD3(nn.Module):
+    def __init__(self, lr, state_dim, action_dim, max_action, is_continuous=False, device='cpu'):
+        super(TD3, self).__init__()
         
-        self.actor = Actor(state_dim, action_dim, max_action, is_continuous).to(device)
-        self.actor_target = Actor(state_dim, action_dim, max_action, is_continuous).to(device)
+        self.actor = Actor(state_dim, action_dim, max_action, is_continuous)
+        self.actor_target = Actor(state_dim, action_dim, max_action, is_continuous)
         self.actor_target.load_state_dict(self.actor.state_dict())
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr)
         
-        self.critic_1 = Critic(state_dim, action_dim).to(device)
-        self.critic_1_target = Critic(state_dim, action_dim).to(device)
+        self.critic_1 = Critic(state_dim, action_dim)
+        self.critic_1_target = Critic(state_dim, action_dim)
         self.critic_1_target.load_state_dict(self.critic_1.state_dict())
-        self.critic_1_optimizer = optim.Adam(self.critic_1.parameters(), lr=lr)
         
-        self.critic_2 = Critic(state_dim, action_dim).to(device)
-        self.critic_2_target = Critic(state_dim, action_dim).to(device)
+        self.critic_2 = Critic(state_dim, action_dim)
+        self.critic_2_target = Critic(state_dim, action_dim)
         self.critic_2_target.load_state_dict(self.critic_2.state_dict())
+
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr)
+        self.critic_1_optimizer = optim.Adam(self.critic_1.parameters(), lr=lr)
         self.critic_2_optimizer = optim.Adam(self.critic_2.parameters(), lr=lr)
         
         self.max_action = max_action
         self.buffer = ReplayBuffer()
+        self.device = device
     
     def select_action(self, state):
-        state = torch.FloatTensor(state.reshape(1, -1)).to(device)
-        return self.actor(state).cpu().data.numpy().flatten()
+        state = state.reshape(1, -1)
+        return self.actor(state).flatten()
     
     def update(self, replay_buffer, n_iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay):
         
         for i in range(n_iter):
             # Sample a batch of transitions from replay buffer:
-            state, action_, reward, next_state, done = replay_buffer.sample(batch_size)
-            state = torch.FloatTensor(state).to(device)
-            action = torch.FloatTensor(action_).to(device)
-            reward = torch.FloatTensor(reward).reshape((batch_size,1)).to(device)
-            next_state = torch.FloatTensor(next_state).to(device)
-            done = torch.FloatTensor(done).reshape((batch_size,1)).to(device)
+            state, action, reward, next_state, done = replay_buffer.sample(batch_size)
             
             # Select next action according to target policy:
-            noise = torch.FloatTensor(action_).data.normal_(0, policy_noise).to(device)
+            noise = action.data.normal_(0, policy_noise).to(self.device)
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (self.actor_target(next_state) + noise)
             next_action = next_action.clamp(-self.max_action, self.max_action)
@@ -140,19 +139,19 @@ class TD3:
             target_Q1 = self.critic_1_target(next_state, next_action)
             target_Q2 = self.critic_2_target(next_state, next_action)
             target_Q = torch.min(target_Q1, target_Q2)
-            target_Q = reward + ((1-done) * gamma * target_Q).detach()
+            target_Q = (reward + (1-done) * gamma * target_Q).detach()
             
             # Optimize Critic 1:
+            self.critic_1_optimizer.zero_grad()
             current_Q1 = self.critic_1(state, action)
             loss_Q1 = F.mse_loss(current_Q1, target_Q)
-            self.critic_1_optimizer.zero_grad()
             loss_Q1.backward()
             self.critic_1_optimizer.step()
             
             # Optimize Critic 2:
+            self.critic_2_optimizer.zero_grad()
             current_Q2 = self.critic_2(state, action)
             loss_Q2 = F.mse_loss(current_Q2, target_Q)
-            self.critic_2_optimizer.zero_grad()
             loss_Q2.backward()
             self.critic_2_optimizer.step()
             
@@ -199,6 +198,4 @@ class TD3:
         
     
     def load_actor(self, path1):
-    # def load_actor(self, path1, path2):
         self.actor.load_state_dict(torch.load(path1, map_location=lambda storage, loc: storage))
-        # self.actor_target.load_state_dict(torch.load(path2, map_location=lambda storage, loc: storage))
