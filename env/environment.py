@@ -160,7 +160,8 @@ class Environment(object):
         self.gnb.reset() # 重置原本基站
 
         for bucket in self.gnb.TD_policy.buckets:
-            bucket.offset = 1
+            # bucket.offset = 1
+            bucket.offset = 5*np.random.randint(1,20)/100
     
     def close(self):
         """Close the environment

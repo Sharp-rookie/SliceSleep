@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn.functional as F
 import warnings;warnings.simplefilter('ignore')
 
 from .common import Actor, Critic, ReplayBuffer
@@ -23,13 +23,15 @@ class DDPG(nn.Module):
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr)
         
-        self.max_action = max_action
         self.buffer = ReplayBuffer()
         self.device = device
     
     def select_action(self, state):
+        
         state = state.reshape(1, -1)
-        return self.actor(state).flatten()
+        with torch.no_grad():
+            action = self.actor(state).flatten()
+        return action
     
     def update(self, n_iter, batch_size, gamma, polyak):
         
@@ -49,7 +51,7 @@ class DDPG(nn.Module):
             # Critic Loss
             ####################
             # Select next action according to target actor with noise:
-            next_action = (self.actor_target(next_state)).clamp(-self.max_action, self.max_action)
+            next_action = (self.actor_target(next_state))
 
             # target Q-value
             target_Q = self.critic_target(next_state, next_action)
@@ -83,14 +85,14 @@ class DDPG(nn.Module):
         torch.save(self.actor.state_dict(), '%s/%s_actor.pth' % (directory, name))
         torch.save(self.actor_target.state_dict(), '%s/%s_actor_target.pth' % (directory, name))
         
-        torch.save(self.critic.state_dict(), '%s/%s_crtic.pth' % (directory, name))
+        torch.save(self.critic.state_dict(), '%s/%s_critic.pth' % (directory, name))
         torch.save(self.critic_target.state_dict(), '%s/%s_critic_target.pth' % (directory, name))
         
     def load(self, directory, name):
         self.actor.load_state_dict(torch.load('%s/%s_actor.pth' % (directory, name), map_location=lambda storage, loc: storage))
         self.actor_target.load_state_dict(torch.load('%s/%s_actor_target.pth' % (directory, name), map_location=lambda storage, loc: storage))
         
-        self.critic.load_state_dict(torch.load('%s/%s_crtic.pth' % (directory, name), map_location=lambda storage, loc: storage))
+        self.critic.load_state_dict(torch.load('%s/%s_critic.pth' % (directory, name), map_location=lambda storage, loc: storage))
         self.critic_target.load_state_dict(torch.load('%s/%s_critic_target.pth' % (directory, name), map_location=lambda storage, loc: storage))
         
     def load_actor(self, path):

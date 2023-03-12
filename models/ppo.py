@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 from torch.distributions import Categorical
+import warnings;warnings.simplefilter('ignore')
 
 
 ################################## PPO Policy ##################################
@@ -19,11 +22,6 @@ class RolloutBuffer:
         del self.logprobs[:]
         del self.rewards[:]
         del self.is_terminals[:]
-
-
-def init_weights(m):
-    if type(m) == nn.Linear:
-        nn.init.normal_(m.weight, std=0.01)
 
 
 class ActorCritic(nn.Module):
@@ -54,9 +52,6 @@ class ActorCritic(nn.Module):
                         nn.LayerNorm(64),
                         nn.Linear(64, 1)
                     )
-
-        self.actor.apply(init_weights)
-        self.critic.apply(init_weights)
         
     def forward(self):
         raise NotImplementedError
@@ -76,10 +71,7 @@ class ActorCritic(nn.Module):
         state = state.reshape(-1, self.state_dim)
 
         action_probs = self.actor(state)
-        # dist = Categorical(action_probs)
-        import ipdb
-        try: dist = Categorical(action_probs)
-        except: ipdb.set_trace()
+        dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
         state_values = self.critic(state)
@@ -99,15 +91,13 @@ class PPO(nn.Module):
         self.buffer = RolloutBuffer()
 
         self.policy = ActorCritic(state_dim, action_dim)
-        self.optimizer = torch.optim.Adam([
+        self.optimizer = optim.Adam([
                         {'params': self.policy.actor.parameters(), 'lr': lr_actor},
                         {'params': self.policy.critic.parameters(), 'lr': lr_critic}
                     ])
 
         self.policy_old = ActorCritic(state_dim, action_dim)
         self.policy_old.load_state_dict(self.policy.state_dict())
-        
-        self.MseLoss = nn.MSELoss()
 
     def select_action(self, state):
 
@@ -136,10 +126,7 @@ class PPO(nn.Module):
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
         # convert list to tensor
-        # old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
-        import ipdb
-        try: old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
-        except: ipdb.set_trace()
+        old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
         old_actions = torch.stack(self.buffer.actions, dim=0).detach().to(self.device)
         old_logprobs = torch.stack(self.buffer.logprobs, dim=0).detach().to(self.device)
 
@@ -161,7 +148,7 @@ class PPO(nn.Module):
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy
+            loss = -torch.min(surr1, surr2) + 0.5*F.mse_loss(state_values, rewards) - 0.01*dist_entropy
             
             # take gradient step
             self.optimizer.zero_grad()

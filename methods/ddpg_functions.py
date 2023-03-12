@@ -34,9 +34,6 @@ def train_ddpg(
     action_dim = len(action_space)
 
     polyak = 0.995      # target policy update parameter (1-tau)
-    policy_noise = 0.2  # target policy smoothing noise
-    noise_clip = 0.5
-    policy_delay = 2    # delayed policy updates parameter
 
     ################# training procedure ################
 
@@ -70,13 +67,13 @@ def train_ddpg(
             # tqdm
             pbar.set_description(f"\33[36m🌌 Epoch {episode}/{max_episodes}")
 
-            # select action and add exploration noise:
+            # select action and add exploration noise
             actions = [ddpg_agent1.select_action(state), ddpg_agent2.select_action(state), ddpg_agent3.select_action(state)]
             for i in range(3):
                 actions[i] = actions[i] + torch.randn(action_dim).to(device)*exploration_noise
                 actions[i] = actions[i].clip(min(action_space), max(action_space))
             
-            # take action in env:
+            # take action in env
             next_state, rewards, dones = env.step([action_space[torch.argmax(actions[0])], action_space[torch.argmax(actions[1])], action_space[torch.argmax(actions[2])]])
             next_state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)
@@ -110,9 +107,10 @@ def train_ddpg(
                         ddpg_agent2.update(iter, batch_size, gamma, polyak)
                     elif i == 2:
                         ddpg_agent3.update(iter, batch_size, gamma, polyak)
-                    env.gnb.TD_policy.buckets[i].offset = 1
+                        
+                    env.gnb.TD_policy.buckets[i].offset = 5*np.random.randint(1,20)/100
         
-        # logging updates:
+        # logging updates
         log_f.write(f'{episode},{ep_reward[0]},{ep_reward[1]},{ep_reward[2]}\n')
         log_f.flush()
 

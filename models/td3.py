@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn.functional as F
 import warnings;warnings.simplefilter('ignore')
 
 from .common import Actor, Critic, ReplayBuffer
@@ -28,13 +28,15 @@ class TD3(nn.Module):
         self.critic_1_optimizer = optim.Adam(self.critic_1.parameters(), lr=lr)
         self.critic_2_optimizer = optim.Adam(self.critic_2.parameters(), lr=lr)
         
-        self.max_action = max_action
         self.buffer = ReplayBuffer()
         self.device = device
     
     def select_action(self, state):
+        
         state = state.reshape(1, -1)
-        return self.actor(state).flatten()
+        with torch.no_grad():
+            action = self.actor(state).flatten()
+        return action
     
     def update(self, n_iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay):
         
@@ -46,7 +48,6 @@ class TD3(nn.Module):
             noise = action.data.normal_(0, policy_noise).to(self.device)
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (self.actor_target(next_state) + noise)
-            next_action = next_action.clamp(-self.max_action, self.max_action)
             
             # Compute target Q-value:
             target_Q1 = self.critic_1_target(next_state, next_action)
@@ -92,20 +93,20 @@ class TD3(nn.Module):
         torch.save(self.actor.state_dict(), '%s/%s_actor.pth' % (directory, name))
         torch.save(self.actor_target.state_dict(), '%s/%s_actor_target.pth' % (directory, name))
         
-        torch.save(self.critic_1.state_dict(), '%s/%s_crtic_1.pth' % (directory, name))
+        torch.save(self.critic_1.state_dict(), '%s/%s_critic_1.pth' % (directory, name))
         torch.save(self.critic_1_target.state_dict(), '%s/%s_critic_1_target.pth' % (directory, name))
         
-        torch.save(self.critic_2.state_dict(), '%s/%s_crtic_2.pth' % (directory, name))
+        torch.save(self.critic_2.state_dict(), '%s/%s_critic_2.pth' % (directory, name))
         torch.save(self.critic_2_target.state_dict(), '%s/%s_critic_2_target.pth' % (directory, name))
         
     def load(self, directory, name):
         self.actor.load_state_dict(torch.load('%s/%s_actor.pth' % (directory, name), map_location=lambda storage, loc: storage))
         self.actor_target.load_state_dict(torch.load('%s/%s_actor_target.pth' % (directory, name), map_location=lambda storage, loc: storage))
         
-        self.critic_1.load_state_dict(torch.load('%s/%s_crtic_1.pth' % (directory, name), map_location=lambda storage, loc: storage))
+        self.critic_1.load_state_dict(torch.load('%s/%s_critic_1.pth' % (directory, name), map_location=lambda storage, loc: storage))
         self.critic_1_target.load_state_dict(torch.load('%s/%s_critic_1_target.pth' % (directory, name), map_location=lambda storage, loc: storage))
         
-        self.critic_2.load_state_dict(torch.load('%s/%s_crtic_2.pth' % (directory, name), map_location=lambda storage, loc: storage))
+        self.critic_2.load_state_dict(torch.load('%s/%s_critic_2.pth' % (directory, name), map_location=lambda storage, loc: storage))
         self.critic_2_target.load_state_dict(torch.load('%s/%s_critic_2_target.pth' % (directory, name), map_location=lambda storage, loc: storage))
         
     def load_actor(self, path):

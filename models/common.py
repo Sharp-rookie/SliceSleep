@@ -28,11 +28,11 @@ class ReplayBuffer:
             next_state.append(s_.unsqueeze(0))
             done.append(d.unsqueeze(0))
         
-        state = torch.concat(state,dim=0).reshape(batch_size,-1).detach()
-        action = torch.concat(action,dim=0).reshape(batch_size,-1).detach()
-        reward = torch.concat(reward,dim=0).reshape(batch_size,-1).detach()
-        next_state = torch.concat(next_state,dim=0).reshape(batch_size,-1).detach()
-        done = torch.concat(done,dim=0).reshape(batch_size,-1).detach()
+        state = torch.concat(state,dim=0).reshape(batch_size,-1)
+        action = torch.concat(action,dim=0).reshape(batch_size,-1)
+        reward = torch.concat(reward,dim=0).reshape(batch_size,-1)
+        next_state = torch.concat(next_state,dim=0).reshape(batch_size,-1)
+        done = torch.concat(done,dim=0).reshape(batch_size,-1)
                 
         return state, action, reward, next_state, done
 
