@@ -6,12 +6,12 @@ from tqdm import tqdm
 from datetime import datetime
 
 from utils import time_delta
-from models import PPO
+from models import DDPG
 
 
-def train_ppo(
+def train_ddpg(
         env,
-        log_dir="log/ue_3/PPO/",
+        log_dir="log/ue_3/DDPG/",
         save_interval=100,
         gamma = 0.99,
         batch_size=128,
@@ -24,26 +24,26 @@ def train_ppo(
         noise_decay_freq=50,
         device='cpu'
     ):
-
+    
     print("============================================================================================")
 
-    ####### PPO hyperparameters ######
+    ####### DDPG hyperparameters ######
 
     state_dim = 6
     action_space = [-1, 0, 1]
     action_dim = len(action_space)
 
-    K_epochs = 80      # update policy for K epochs in one PPO update
-    eps_clip = 0.2     # clip parameter for PPO
-    lr_actor = 0.0003  # learning rate for actor network
-    lr_critic = 0.001  # learning rate for critic network
+    polyak = 0.995      # target policy update parameter (1-tau)
+    policy_noise = 0.2  # target policy smoothing noise
+    noise_clip = 0.5
+    policy_delay = 2    # delayed policy updates parameter
 
     ################# training procedure ################
 
-    # initialize PPO agents
-    ppo_agent1 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
-    ppo_agent2 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
-    ppo_agent3 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
+    # initialize DDPG agents
+    ddpg_agent1 = DDPG(lr, state_dim, action_dim, max(action_space), device=device).to(device)
+    ddpg_agent2 = DDPG(lr, state_dim, action_dim, max(action_space), device=device).to(device)
+    ddpg_agent3 = DDPG(lr, state_dim, action_dim, max(action_space), device=device).to(device)
 
     # logging file
     log_file = log_dir + "log" + ".csv"
@@ -70,20 +70,23 @@ def train_ppo(
             # tqdm
             pbar.set_description(f"\33[36m🌌 Epoch {episode}/{max_episodes}")
 
-            # select action with policy
-            action = [ppo_agent1.select_action(state), ppo_agent2.select_action(state), ppo_agent3.select_action(state)]
-            state, rewards, dones = env.step([action_space[action[0]], action_space[action[1]], action_space[action[2]]])
-            state = torch.Tensor(state).to(device)
+            # select action and add exploration noise:
+            actions = [ddpg_agent1.select_action(state), ddpg_agent2.select_action(state), ddpg_agent3.select_action(state)]
+            for i in range(3):
+                actions[i] = actions[i] + torch.randn(action_dim).to(device)*exploration_noise
+                actions[i] = actions[i].clip(min(action_space), max(action_space))
+            
+            # take action in env:
+            next_state, rewards, dones = env.step([action_space[torch.argmax(actions[0])], action_space[torch.argmax(actions[1])], action_space[torch.argmax(actions[2])]])
+            next_state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)
             dones = torch.Tensor(dones).float().to(device)
-            
-            # saving reward and is_terminals
-            ppo_agent1.buffer.rewards.append(rewards[0])
-            ppo_agent2.buffer.rewards.append(rewards[1])
-            ppo_agent3.buffer.rewards.append(rewards[2])
-            ppo_agent1.buffer.is_terminals.append(dones[0])
-            ppo_agent2.buffer.is_terminals.append(dones[1])
-            ppo_agent3.buffer.is_terminals.append(dones[2])
+
+            # add to buffer
+            ddpg_agent1.buffer.add((state, actions[0], rewards[0], next_state, dones[0]))
+            ddpg_agent2.buffer.add((state, actions[1], rewards[1], next_state, dones[1]))
+            ddpg_agent3.buffer.add((state, actions[2], rewards[2], next_state, dones[2]))
+            state = next_state
 
             for i in range(3):
                 ep_reward[i] += rewards[i]
@@ -93,20 +96,20 @@ def train_ppo(
             pbar.set_postfix_str(f'{env.gnb.TD_policy.buckets[0].rate}tti, [{env.gnb.TD_policy.buckets[0].offset*100:.0f}%, {env.gnb.TD_policy.buckets[1].offset*100:.0f}%, {env.gnb.TD_policy.buckets[2].offset*100:.0f}%], [{round(env.gnb.datavolume[0]/1e3,2)}, {round(env.gnb.datavolume[1]/1e3,2)}, {round(env.gnb.datavolume[2]/1e3,2)}]B, [{env.gnb.delay[0]:.2f}, {env.gnb.delay[1]:.2f}, {env.gnb.delay[2]:.2f}]ms, [{rewards[0]:.2f}, {rewards[1]:.2f}, {rewards[2]:.2f}], {cost_time}\33[0m')
             pbar.update()
 
-            # update ppo_agent when episode is done
+            # update ddpg_agent when episode is done
             if iter==(max_iters-1):
-                ppo_agent1.update()
-                ppo_agent2.update()
-                ppo_agent3.update()
+                ddpg_agent1.update(iter, batch_size, gamma, polyak)
+                ddpg_agent2.update(iter, batch_size, gamma, polyak)
+                ddpg_agent3.update(iter, batch_size, gamma, polyak)
                 pbar.reset()
             for i, done in enumerate(dones):
                 if done:
-                    # if i == 0:
-                    #     ppo_agent1.update()
-                    # elif i == 1:
-                    #     ppo_agent2.update()
-                    # elif i == 2:
-                    #     ppo_agent3.update()
+                    if i == 0:
+                        ddpg_agent1.update(iter, batch_size, gamma, polyak)
+                    elif i == 1:
+                        ddpg_agent2.update(iter, batch_size, gamma, polyak)
+                    elif i == 2:
+                        ddpg_agent3.update(iter, batch_size, gamma, polyak)
                     env.gnb.TD_policy.buckets[i].offset = 1
         
         # logging updates:
@@ -117,23 +120,28 @@ def train_ppo(
         if episode % save_interval == 0:
             ckpt_dir = log_dir + "checkpoint/episode" + str(episode) + "/"
             os.makedirs(ckpt_dir, exist_ok=True)
-            ppo_agent1.save(ckpt_dir + 'slice1.pth')
-            ppo_agent2.save(ckpt_dir + 'slice2.pth')
-            ppo_agent3.save(ckpt_dir + 'slice3.pth')
+            ddpg_agent1.save(ckpt_dir, "slice1")
+            ddpg_agent2.save(ckpt_dir, "slice2")
+            ddpg_agent3.save(ckpt_dir, "slice3")
+
+        # noise decay
+        if episode % noise_decay_freq == 0:
+            exploration_noise  = max(exploration_noise-noise_decay_rate, min_noise)
+            print('noise decay to: ', exploration_noise)
 
     log_f.close()
     env.close()
 
 
-def test_ppo(
+def test_ddpg(
         env,
-        test_dir="test/ue_3/PPO/",
+        test_dir="test/ue_3/DDPG/",
         max_episodes=1,
         max_iters=1500,
         device='cpu',
-        path1 = f'checkpoints/PPO_15/2022_11_17_13_06_26/PPO_slice1_60_actor.pth',
-        path2 = f'checkpoints/PPO_15/2022_12_01_12_36_09/PPO_slice2_60_actor.pth',
-        path3 = f'checkpoints/PPO_15/2022_11_17_13_06_26/PPO_slice3_60_actor.pth'
+        path1 = f'checkpoints/DDPG_15/2022_11_17_13_06_26/DDPG_slice1_60_actor.pth',
+        path2 = f'checkpoints/DDPG_15/2022_12_01_12_36_09/DDPG_slice2_60_actor.pth',
+        path3 = f'checkpoints/DDPG_15/2022_11_17_13_06_26/DDPG_slice3_60_actor.pth'
     ):
 
     print("============================================================================================")
@@ -143,16 +151,17 @@ def test_ppo(
     state_dim = 6
     action_space = [-1, 0, 1]
     action_dim = len(action_space)
+    max_action = max(action_space)
 
     ################# testing procedure ################
 
-    # initialize PPO agents
-    ppo_agent1 = PPO(state_dim, action_dim)
-    ppo_agent2 = PPO(state_dim, action_dim)
-    ppo_agent3 = PPO(state_dim, action_dim)
-    ppo_agent1.load(path1).to(device)
-    ppo_agent2.load(path2).to(device)
-    ppo_agent3.load(path3).to(device)
+    # initialize DDPG agents
+    ddpg_agent1 = DDPG(0, state_dim, action_dim, max_action)
+    ddpg_agent2 = DDPG(0, state_dim, action_dim, max_action)
+    ddpg_agent3 = DDPG(0, state_dim, action_dim, max_action)
+    ddpg_agent1.load_actor(path1).to(device)
+    ddpg_agent2.load_actor(path2).to(device)
+    ddpg_agent3.load_actor(path3).to(device)
 
     # logging file
     os.makedirs(test_dir, exist_ok=True)
@@ -187,11 +196,9 @@ def test_ppo(
             pbar.set_description(f"\33[36m🌌 Epoch {ep}/{max_episodes}")
 
             # select action with policy
-            action = [ppo_agent1.select_action(state), ppo_agent2.select_action(state), ppo_agent3.select_action(state)]
-            next_state, rewards, _ = env.step([action_space[action[0]], action_space[action[1]], action_space[action[2]]])
-            state = torch.Tensor(state).to(device)
-            rewards = torch.Tensor(rewards).to(device)
-            dones = torch.Tensor(dones).float().to(device)
+            action = [ddpg_agent1.select_action(state), ddpg_agent2.select_action(state), ddpg_agent3.select_action(state)]
+            next_state, rewards, _ = env.step([action_space[np.argmax(action[0])], action_space[np.argmax(action[1])], action_space[np.argmax(action[2])]])
+            state = torch.Tensor([float(i) for i in next_state]).to(device)
 
             # statistic
             for i in range(3):

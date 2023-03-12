@@ -98,18 +98,18 @@ def train_td3(
 
             # update td3_agent when episode is done
             if iter==(max_iters-1):
-                td3_agent1.update(td3_agent1.buffer, iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
-                td3_agent2.update(td3_agent2.buffer, iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
-                td3_agent3.update(td3_agent3.buffer, iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                td3_agent1.update(iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                td3_agent2.update(iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                td3_agent3.update(iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                 pbar.reset()
             for i, done in enumerate(dones):
                 if done:
                     if i == 0:
-                        td3_agent1.update(td3_agent1.buffer, iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                        td3_agent1.update(iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                     elif i == 1:
-                        td3_agent2.update(td3_agent2.buffer, iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                        td3_agent2.update(iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                     elif i == 2:
-                        td3_agent3.update(td3_agent3.buffer, iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
+                        td3_agent3.update(iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay)
                     env.gnb.TD_policy.buckets[i].offset = 1
         
         # logging updates:

@@ -9,7 +9,7 @@ from utils import plot_result
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='TD3', help='Model: TD3, PPO, DDPG, SAC')
+    parser.add_argument('--model', type=str, default='PPO', help='Model: TD3, PPO, DDPG, SAC')
     parser.add_argument('--ue_num', type=int, default=3, help='UE Number: 3, 6, 9, 12, 15')
     parser.add_argument('--device', type=str, default='cuda:1', help='Device')
     parser.add_argument('--max_episode', type=int, default=10000, help='Max training episodes')
@@ -29,12 +29,16 @@ if __name__ == '__main__':
         md.train_td3(env, log_dir=log_dir, max_episodes=args.max_episode, max_iters=args.max_iter, device=args.device)
     elif args.model == 'PPO':
         md.train_ppo(env, log_dir=log_dir, max_episodes=args.max_episode, max_iters=args.max_iter, device=args.device)
+    elif args.model == 'DDPG':
+        md.train_ddpg(env, log_dir=log_dir, max_episodes=args.max_episode, max_iters=args.max_iter, device=args.device)
     
     # test
     if args.model == 'TD3':
         log_file = md.test_td3(env, test_dir=log_dir, device=args.device, path1=args.path1, path2=args.path2, path3=args.path3)
     elif args.model == 'PPO':
         log_file = md.test_ppo(env, test_dir=log_dir, device=args.device, path1=args.path1, path2=args.path2, path3=args.path3)
+    elif args.model == 'DDPG':
+        log_file = md.test_ddpg(env, test_dir=log_dir, device=args.device, path1=args.path1, path2=args.path2, path3=args.path3)
     
     # plot result
     plot_result(log_file, test_dir)

@@ -157,7 +157,7 @@ class Environment(object):
         """Reset the environment
         """
         
-        self.gnb.reset() # 关闭原本基站
+        self.gnb.reset() # 重置原本基站
 
         for bucket in self.gnb.TD_policy.buckets:
             bucket.offset = 1

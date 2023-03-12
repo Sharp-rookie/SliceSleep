@@ -3,104 +3,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import numpy as np
+import warnings;warnings.simplefilter('ignore')
 
+from .common import Actor, Critic, ReplayBuffer
 
-class ReplayBuffer:
-    def __init__(self, max_size=5e5):
-        self.buffer = []
-        self.max_size = int(max_size)
-        self.size = 0
-    
-    def add(self, transition):
-        self.size += 1
-        self.buffer.append(transition) # transiton is tuple of (state, action, reward, next_state, done)
-    
-    def sample(self, batch_size):
-        # delete 1/5th of the buffer when full
-        if self.size > self.max_size:
-            del self.buffer[0:int(self.size/5)]
-            self.size = len(self.buffer)
-        
-        indexes = np.random.randint(0, len(self.buffer), size=batch_size)
-        state, action, reward, next_state, done = [], [], [], [], []
-        
-        for i in indexes:
-            s, a, r, s_, d = self.buffer[i]
-            state.append(s.unsqueeze(0))
-            action.append(a.unsqueeze(0))
-            reward.append(r.unsqueeze(0))
-            next_state.append(s_.unsqueeze(0))
-            done.append(d.unsqueeze(0))
-        
-        state = torch.concat(state,dim=0).reshape(batch_size,-1).detach()
-        action = torch.concat(action,dim=0).reshape(batch_size,-1).detach()
-        reward = torch.concat(reward,dim=0).reshape(batch_size,-1).detach()
-        next_state = torch.concat(next_state,dim=0).reshape(batch_size,-1).detach()
-        done = torch.concat(done,dim=0).reshape(batch_size,-1).detach()
-                
-        return state, action, reward, next_state, done
-
-
-class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, max_action, is_continuous):
-        super(Actor, self).__init__()
-        
-        self.l1 = nn.Linear(state_dim, 64)
-        self.l2 = nn.Linear(64, 64)
-        self.l3 = nn.Linear(64, action_dim)
-        
-        self.ln1 = nn.LayerNorm(64)
-        self.ln2 = nn.LayerNorm(64)
-        
-        self.max_action = max_action
-        self.is_continuous = is_continuous
-        
-    def forward(self, state):
-        if self.is_continuous:
-            a = torch.tanh(self.l1(state))
-            a = self.ln1(a)
-            a = torch.tanh(self.l2(a))
-            a = self.ln2(a)
-            a = torch.sigmoid(self.l3(a)) * self.max_action
-        else:
-            a = F.relu(self.l1(state))
-            a = self.ln1(a)
-            a = F.relu(self.l2(a))
-            a = self.ln2(a)
-            a = torch.tanh(self.l3(a)) * self.max_action
-            
-        return a
-        
-
-class Critic(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(Critic, self).__init__()
-        
-        self.l1 = nn.Linear(state_dim + action_dim, 64)
-        self.l2 = nn.Linear(64, 64)
-        self.l3 = nn.Linear(64, 1)
-
-        self.ln1 = nn.LayerNorm(64)
-        self.ln2 = nn.LayerNorm(64)
-        
-    def forward(self, state, action):
-        state_action = torch.cat([state, action], 1)
-        
-        q = F.relu(self.l1(state_action))
-        q = self.ln1(q)
-        q = F.relu(self.l2(q))
-        q = self.ln2(q)
-        q = self.l3(q)
-        return q
-    
 
 class TD3(nn.Module):
-    def __init__(self, lr, state_dim, action_dim, max_action, is_continuous=False, device='cpu'):
+    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu'):
         super(TD3, self).__init__()
         
-        self.actor = Actor(state_dim, action_dim, max_action, is_continuous)
-        self.actor_target = Actor(state_dim, action_dim, max_action, is_continuous)
+        self.actor = Actor(state_dim, action_dim, max_action)
+        self.actor_target = Actor(state_dim, action_dim, max_action)
         self.actor_target.load_state_dict(self.actor.state_dict())
         
         self.critic_1 = Critic(state_dim, action_dim)
@@ -123,12 +36,12 @@ class TD3(nn.Module):
         state = state.reshape(1, -1)
         return self.actor(state).flatten()
     
-    def update(self, replay_buffer, n_iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay):
+    def update(self, n_iter, batch_size, gamma, polyak, policy_noise, noise_clip, policy_delay):
         
         for i in range(n_iter):
             # Sample a batch of transitions from replay buffer:
-            state, action, reward, next_state, done = replay_buffer.sample(batch_size)
-            
+            state, action, reward, next_state, done = self.buffer.sample(batch_size)
+
             # Select next action according to target policy:
             noise = action.data.normal_(0, policy_noise).to(self.device)
             noise = noise.clamp(-noise_clip, noise_clip)
@@ -175,7 +88,6 @@ class TD3(nn.Module):
                 for param, target_param in zip(self.critic_2.parameters(), self.critic_2_target.parameters()):
                     target_param.data.copy_( (polyak * target_param.data) + ((1-polyak) * param.data))
                     
-
     def save(self, directory, name):
         torch.save(self.actor.state_dict(), '%s/%s_actor.pth' % (directory, name))
         torch.save(self.actor_target.state_dict(), '%s/%s_actor_target.pth' % (directory, name))
@@ -196,6 +108,5 @@ class TD3(nn.Module):
         self.critic_2.load_state_dict(torch.load('%s/%s_crtic_2.pth' % (directory, name), map_location=lambda storage, loc: storage))
         self.critic_2_target.load_state_dict(torch.load('%s/%s_critic_2_target.pth' % (directory, name), map_location=lambda storage, loc: storage))
         
-    
-    def load_actor(self, path1):
-        self.actor.load_state_dict(torch.load(path1, map_location=lambda storage, loc: storage))
+    def load_actor(self, path):
+        self.actor.load_state_dict(torch.load(path, map_location=lambda storage, loc: storage))

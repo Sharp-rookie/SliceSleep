@@ -76,7 +76,10 @@ class ActorCritic(nn.Module):
         state = state.reshape(-1, self.state_dim)
 
         action_probs = self.actor(state)
-        dist = Categorical(action_probs)
+        # dist = Categorical(action_probs)
+        import ipdb
+        try: dist = Categorical(action_probs)
+        except: ipdb.set_trace()
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
         state_values = self.critic(state)
@@ -133,7 +136,10 @@ class PPO(nn.Module):
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
         # convert list to tensor
-        old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
+        # old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
+        import ipdb
+        try: old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
+        except: ipdb.set_trace()
         old_actions = torch.stack(self.buffer.actions, dim=0).detach().to(self.device)
         old_logprobs = torch.stack(self.buffer.logprobs, dim=0).detach().to(self.device)
 
