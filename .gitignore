@@ -23,5 +23,5 @@
 *.7*
 *.8*
 *.9*
-/vscode
+/.vscode
 */__pycache__
