@@ -6,14 +6,31 @@ import torch.nn.functional as F
 
 
 class ReplayBuffer:
-    def __init__(self, max_size=5e5):
+    def __init__(self, max_size=5e5, log_dir=None, id=0):
         self.buffer = []
         self.max_size = int(max_size)
         self.size = 0
+
+        if log_dir:
+            log_file = log_dir + f"pool{id}" + ".csv"
+            self.log_f = open(log_file, "w+")
+            self.log_f.write('dv1,dv2,dv3,offset1,offset2,offset3,act-1,act+0,act+1,reward,n_dv1,n_dv2,n_dv3,n_offset1,n_offset2,n_offset3,done,\n')
+        else:
+            self.log_f = None
     
     def add(self, transition):
         self.size = (self.size+1) % self.max_size
         self.buffer.append(transition) # transiton is tuple of (state, action, reward, next_state, done)
+
+        if self.log_f:
+            for item in transition:
+                if isinstance(item.cpu().tolist(), list):
+                    for i in item:
+                        self.log_f.write(f'{i},')
+                elif isinstance(item.cpu().tolist(), float):
+                    self.log_f.write(f'{item},')
+            self.log_f.write(f'\n')   
+            self.log_f.flush()
     
     def sample(self, batch_size):
         

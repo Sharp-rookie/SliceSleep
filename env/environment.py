@@ -114,7 +114,7 @@ class Environment(object):
         # Normalized DataVolume
         for i in range(3):
             mu = self.gnb.slice_ueNum[i] * (self.gnb.avg_size[i] / self.gnb.avg_interval[i])
-            dataV = self.datavolume[i] / mu
+            dataV = self.datavolume[i] / mu if self.datavolume[i] else 0.
             observation.append(dataV)
 
         [observation.append(self.gnb.TD_policy.buckets[i].offset) for i in range(3)]

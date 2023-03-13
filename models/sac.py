@@ -108,7 +108,7 @@ class PolicyNetwork(nn.Module):
 
 
 class SAC(nn.Module):
-    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu'):
+    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu', log_dir=None, id=0):
         super(SAC, self).__init__()
 
         self.policy = PolicyNetwork(state_dim, action_dim, max_action, log_std_min=-1, log_std_max=1)
@@ -125,7 +125,7 @@ class SAC(nn.Module):
         self.soft_q_optimizer2 = optim.Adam(self.soft_q_net2.parameters(), lr=lr)
 
         self.max_action = max_action
-        self.buffer = ReplayBuffer()
+        self.buffer = ReplayBuffer(log_dir=log_dir, id=id)
         self.device = device
 
     def select_action(self, state):

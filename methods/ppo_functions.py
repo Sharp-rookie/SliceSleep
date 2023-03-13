@@ -40,16 +40,16 @@ def train_ppo(
 
     ################# training procedure ################
 
-    # initialize PPO agents
-    ppo_agent1 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
-    ppo_agent2 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
-    ppo_agent3 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
-
     # logging file
     log_file = log_dir + "log" + ".csv"
     os.makedirs(log_dir, exist_ok=True)
     log_f = open(log_file, "w+")
     log_f.write('episode,reward1,reward2,reward3\n')
+
+    # initialize PPO agents
+    ppo_agent1 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
+    ppo_agent2 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
+    ppo_agent3 = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, device=device).to(device)
 
     # tqdm
     bar_format = '{desc}{n_fmt:>2s}/{total_fmt:<3s}|{bar}|{postfix}'
@@ -59,11 +59,11 @@ def train_ppo(
     start_time = datetime.now().replace(microsecond=0)
     for episode in range(1, max_episodes+1):
 
-        state = torch.Tensor([0.0 for _ in range(state_dim)]).to(device)
         ep_reward = [0 for _ in range(3)]
 
         env.reset()
         env.gnb.transP = 46
+        state = torch.Tensor(env.get_state()).to(device)
 
         for iter in range(1, max_iters+1):
 
@@ -175,11 +175,11 @@ def test_ppo(
         ep_reward = [0]*3
 
         # reset
-        state = torch.tensor([0.0] * state_dim)
         env.reset()
         pbar.reset()
 
         env.gnb.transP = 46
+        state = torch.Tensor(env.get_state()).to(device)
 
         for t in range(1, max_iters+1):
 

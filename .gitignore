@@ -8,6 +8,7 @@
 *.h5
 *.npz
 *.npy
+*.zip
 *.jpg
 *.csv
 *.ckpt
@@ -22,4 +23,5 @@
 *.7*
 *.8*
 *.9*
-./vscode
+/vscode
+*/__pycache__

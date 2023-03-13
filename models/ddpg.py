@@ -9,7 +9,7 @@ from .common import Actor, Critic, ReplayBuffer
 
 
 class DDPG(nn.Module):
-    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu'):
+    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu', log_dir=None, id=0):
         super(DDPG, self).__init__()
         
         self.actor = Actor(state_dim, action_dim, max_action)
@@ -23,7 +23,7 @@ class DDPG(nn.Module):
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr)
         
-        self.buffer = ReplayBuffer()
+        self.buffer = ReplayBuffer(log_dir=log_dir, id=id)
         self.device = device
     
     def select_action(self, state):

@@ -9,7 +9,7 @@ from .common import Actor, Critic, ReplayBuffer
 
 
 class TD3(nn.Module):
-    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu'):
+    def __init__(self, lr, state_dim, action_dim, max_action, device='cpu', log_dir=None, id=0):
         super(TD3, self).__init__()
         
         self.actor = Actor(state_dim, action_dim, max_action)
@@ -28,7 +28,7 @@ class TD3(nn.Module):
         self.critic_1_optimizer = optim.Adam(self.critic_1.parameters(), lr=lr)
         self.critic_2_optimizer = optim.Adam(self.critic_2.parameters(), lr=lr)
         
-        self.buffer = ReplayBuffer()
+        self.buffer = ReplayBuffer(log_dir=log_dir, id=id)
         self.device = device
     
     def select_action(self, state):
