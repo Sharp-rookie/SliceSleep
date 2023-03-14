@@ -156,12 +156,11 @@ def test_td3(
     ################# testing procedure ################
 
     # initialize TD3 agents
-    td3_agent1 = TD3(0, state_dim, action_dim, max_action)
-    td3_agent2 = TD3(0, state_dim, action_dim, max_action)
-    td3_agent3 = TD3(0, state_dim, action_dim, max_action)
-    td3_agent1.load_actor(path1).to(device)
-    td3_agent2.load_actor(path2).to(device)
-    td3_agent3.load_actor(path3).to(device)
+    td3_agent1, td3_agent2, td3_agent3 = None, None, None
+    for agent, weight_path in zip([td3_agent1, td3_agent2, td3_agent3], [path1, path2, path3]):
+        agent = TD3(0, state_dim, action_dim, max_action)
+        agent.load_actor(weight_path)
+        agent.to(device)
 
     # logging file
     os.makedirs(test_dir, exist_ok=True)

@@ -154,12 +154,11 @@ def test_ddpg(
     ################# testing procedure ################
 
     # initialize DDPG agents
-    ddpg_agent1 = DDPG(0, state_dim, action_dim, max_action)
-    ddpg_agent2 = DDPG(0, state_dim, action_dim, max_action)
-    ddpg_agent3 = DDPG(0, state_dim, action_dim, max_action)
-    ddpg_agent1.load_actor(path1).to(device)
-    ddpg_agent2.load_actor(path2).to(device)
-    ddpg_agent3.load_actor(path3).to(device)
+    ddpg_agent1, ddpg_agent2, ddpg_agent3 = None, None, None
+    for agent, weight_path in zip([ddpg_agent1, ddpg_agent2, ddpg_agent3], [path1, path2, path3]):
+        agent = DDPG(0, state_dim, action_dim, max_action)
+        agent.load_actor(weight_path)
+        agent.to(device)
 
     # logging file
     os.makedirs(test_dir, exist_ok=True)

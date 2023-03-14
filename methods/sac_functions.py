@@ -70,7 +70,7 @@ def train_sac(
             # select action and add exploration noise
             actions = [sac_agent1.select_action(state), sac_agent2.select_action(state), sac_agent3.select_action(state)]
             for i in range(3):
-                actions[i] = actions[i] + torch.randn(action_dim).to(device)*exploration_noise
+                actions[i] = actions[i] + torch.randn(action_dim).to(device) * exploration_noise
                 actions[i] = actions[i].clip(min(action_space), max(action_space))
             
             # take action in env
@@ -154,12 +154,11 @@ def test_sac(
     ################# testing procedure ################
 
     # initialize SAC agents
-    sac_agent1 = SAC(0, state_dim, action_dim, max_action)
-    sac_agent2 = SAC(0, state_dim, action_dim, max_action)
-    sac_agent3 = SAC(0, state_dim, action_dim, max_action)
-    sac_agent1.load_actor(path1).to(device)
-    sac_agent2.load_actor(path2).to(device)
-    sac_agent3.load_actor(path3).to(device)
+    sac_agent1, sac_agent2, sac_agent3 = None, None, None
+    for agent, weight_path in zip([sac_agent1, sac_agent2, sac_agent3], [path1, path2, path3]):
+        agent = SAC(0, state_dim, action_dim, max_action)
+        agent.load_actor(weight_path)
+        agent.to(device)
 
     # logging file
     os.makedirs(test_dir, exist_ok=True)

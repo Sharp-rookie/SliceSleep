@@ -147,12 +147,11 @@ def test_ppo(
     ################# testing procedure ################
 
     # initialize PPO agents
-    ppo_agent1 = PPO(state_dim, action_dim)
-    ppo_agent2 = PPO(state_dim, action_dim)
-    ppo_agent3 = PPO(state_dim, action_dim)
-    ppo_agent1.load(path1).to(device)
-    ppo_agent2.load(path2).to(device)
-    ppo_agent3.load(path3).to(device)
+    ppo_agent1, ppo_agent2, ppo_agent3 = None, None, None
+    for agent, weight_path in zip([ppo_agent1, ppo_agent2, ppo_agent3], [path1, path2, path3]):
+        agent = PPO(state_dim, action_dim)
+        agent.load_actor(weight_path)
+        agent.to(device)
 
     # logging file
     os.makedirs(test_dir, exist_ok=True)
