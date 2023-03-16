@@ -45,7 +45,7 @@ class Packet(object):
         # self.embb_distribution = norm(loc=8*avg_size[0], scale=0.1) # 均值为 ，方差为0.1的正态分布
         # self.urllc_distribution = norm(loc=8*avg_size[1], scale=0.7)
         # self.mmtc_distribution = norm(loc=8*avg_size[2], scale=0)
-        self.embb_distribution = poisson(mu=8*avg_size[0])
+        self.embb_size = 8*avg_size[0]
         self.urllc_size = 8*avg_size[1]
         self.mmtc_size = 8*avg_size[2] # 常数
 
@@ -56,7 +56,8 @@ class Packet(object):
         """
 
         if type == 'eMBB':
-            return int(self.embb_distribution.rvs())
+            # return int(self.embb_distribution.rvs())
+            return int(self.embb_size)
         elif type == 'URLLC':
             return int(self.urllc_size)
         elif type == 'mMTC':
@@ -152,8 +153,8 @@ class UE(object):
         """用户随机移动
         """
 
-        # 每5s移动一次
-        self.removeCount = (self.removeCount + 1) % round(5*1000/self.tti)
+        # 每1s移动一次
+        self.removeCount = (self.removeCount + 1) % round(1*1000/self.tti)
         if self.removeCount != 0:
             return
 
@@ -169,7 +170,7 @@ class UE(object):
             exit()
         
         # 限制距离在0~160m之内
-        self.distance = min(self.distance, 50)
+        self.distance = min(self.distance, 160)
         self.distance = max(self.distance, 1)
     
     def loss_pkt(self, packet: Packet):
@@ -285,6 +286,7 @@ class gNB(object):
         self.BUFFERSIZE = 3000                   # 缓冲区大小
         self.totalPRB = 100                      # 可用prb总数
         self.bandPRB = 2e5                       # per PRB 带宽，hz
+        self.frequency = 2000                    # 载波频率，Mhz
         self.transP = 46                         # 发射功率，dBm
         self.AWGN = -174                         # 加性高斯白噪声功率，dBm/hz
         self.avg_size = avg_size                 # 请求包的平均大小，B（高斯分布）
@@ -462,7 +464,7 @@ class gNB(object):
 
             # https://www.cnblogs.com/jobgeo/p/5202625.html#:~:text=%E8%87%AA%E7%94%B1%E7%A9%BA%E9%97%B4%E6%8D%9F%E8%80%97%E6%98%AF%E6%8C%87%E7%94%B5%E7%A3%81%E6%B3%A2%E5%9C%A8%E4%BC%A0%E8%BE%93%E8%B7%AF%E5%BE%84%E4%B8%AD%E7%9A%84%E8%A1%B0%E8%90%BD%2C%E8%AE%A1%E7%AE%97%E5%85%AC%E5%BC%8F%E5%A6%82%E4%B8%8B%EF%BC%9A,Lbf%3D32.5%2B20lgF%2B20lgD
             # https://www.zhihu.com/question/32326772
-            Lbf = 31.5 + 35*np.log10(ue.distance/1000 + 1e-3) # 路径损耗
+            Lbf = 32.5 + 20*np.log10(ue.distance + 1e-3) + 20*np.log10(self.frequency + 1e-3) # 路径损耗
             noiseP = self.AWGN * (ue.prb * self.bandPRB) # 噪声功率
             ue.snr = dBm2W(self.transP - Lbf) / (dBm2W(noiseP) + 1e-3)
 
