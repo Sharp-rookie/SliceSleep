@@ -3,254 +3,24 @@ import os
 import time
 import numpy as np
 from collections import deque
-from scipy.stats import uniform, poisson, expon
 
 from utils import bcolors, Visualizer
-from .FD_schedule import RR_slice_FD, RR_FD, PF_FD
-from .TD_schedule import TokenBucket, RR_select
-
-__all__ = [
-    'gNB',
-    ]
-
-currentTTI = 0  # 系统当前TTI，用于全局定时（与实际时间不同，因为实际时间受代码运行效率和硬件性能影响）
+from .FD_schedule import RR_FD
+from .TD_schedule import TokenBucket
+from .packet import Packet, currentTTI
+from .ue import UE
 
 # 打点计时
 t_stamp = [round(1000*time.time())] * 5 # request_t, td_schedule_t, print_t, fd_schedule_t, send_t
 duration = [0, 0, 0, 0]
 
-
-bucket_config = [[300,33,0.95], [300,33,0.75], [300,33,0.9]] # token bucket init config [token rate, reservedPRB, offset]
-prb_config = [33, 33, 33] # prb config for RR_select TD scheduling
+bucket_config = [[160,100,1.], [160,100,1.], [160,100,1.]] # token bucket init config [token rate, reservedPRB, offset]
 
 
 def dBm2W(dBm):
     """Convert dBm to W
     """
     return 10**(dBm/10) / 1000
-
-
-class Packet(object):
-    """数据包请求"""
-    def __init__(self, ueid, index1, index2, type, avg_size=[5e4, 2e5, 1e5]):
-        self.ueid = ueid                       # 所属ueid
-        self.slice = type                      # 所属业务类型
-        self.ue_index = index1                 # 在UE侧的id
-        self.buffer_index = index2             # 在基站缓冲区的id
-        self.prb = 0                           # 分得prb个数
-        self.startT = currentTTI               # 产生时刻的时间戳，TTI
-        self.delay = 0                         # 时延等于排队时延 + 传输时延，ms
-
-        # 数据包大小分布
-        # self.embb_distribution = norm(loc=8*avg_size[0], scale=0.1) # 均值为 ，方差为0.1的正态分布
-        # self.urllc_distribution = norm(loc=8*avg_size[1], scale=0.7)
-        # self.mmtc_distribution = norm(loc=8*avg_size[2], scale=0)
-        self.embb_size = 8*avg_size[0]
-        self.urllc_size = 8*avg_size[1]
-        self.mmtc_size = 8*avg_size[2] # 常数
-
-        self.size = self.randomSize(type) # 数据包大小，bit
-    
-    def randomSize(self, type: str):
-        """按照业务类型，随机指定大小数据包，单位：B
-        """
-
-        if type == 'eMBB':
-            # return int(self.embb_distribution.rvs())
-            return int(self.embb_size)
-        elif type == 'URLLC':
-            return int(self.urllc_size)
-        elif type == 'mMTC':
-            return int(self.mmtc_size)
-        else:
-            print('type error in Packet.randomSize()\n')
-            exit()
-
-
-class UE(object):
-    """用户设备"""
-
-    def __init__(self, id, type, tti=1, avg_interval=[6, 90, 80], avg_size=[5e4, 2e5, 1e5]):
-        # 基本信息
-        self.id = id                               # 基站侧id
-        self.slice = type                          # 用户所属类型
-        self.tti = tti                             # 单轮时长，ms
-        self.snr = 700                             # 所在信道的信噪比，初始值700dBm
-        self.pdcprate = 0                          # 单个PRB的发送量，反应信道质量，bit/s
-        self.distance = np.random.randint(1, 51)  # 到基站距离，m
-        self.request_list = deque()                # 请求列表
-        self.received = []                         # 已收到但未清除的缓冲区数据包序号
-        self.avg_size = avg_size                   # 请求包的平均大小，B（高斯分布）
-
-        # 统计量
-        self.delay = None                  # 平均时延，ms
-        self.loss_pkt_num = 0             # 丢包数
-        self.period_avg_prb = 0           # 统计周期内平均分得的PRB数量
-        self.period_schedule_time = 0     # 统计周期内被调度次数
-        self.total_request_pkt_num = 0    # 总请求数
-        self.total_receive_pkt_num = 0    # 总接收数
-        self.period_request_pkt_num = 0   # 统计周期内请求数
-        self.period_receive_pkt_num = 0   # 统计周期内接收数
-
-        # 请求到达间隔分布，TTI
-        if self.slice == 'eMBB':
-            self.interval_distribution = expon(loc=0, scale=avg_interval[0]/self.tti)
-        elif self.slice == 'URLLC':
-            self.interval_distribution = expon(loc=0, scale=avg_interval[1]/self.tti)
-        elif self.slice == 'mMTC':
-            self.interval_distribution = uniform(loc=0, scale=2*avg_interval[2]/self.tti)
-        else:
-            print('type error in UE.init()\n')
-            exit()
-
-        # 其他
-        self.interval = 100        # 请求达到间隔，初始为100TTI ——> 用于判断是否来包
-        self.duration = 0          # 距离上一次来包的时长，TTI ——> 用于判断是否来包
-        self.requestPRB = 0        # 根据buffer计算的PRB需求
-        self.prb = 0               # 分得的PRB个数
-        self.removeCount = 0       # 记录TTI数量，每10000个TTI(5s)进行一次移动 ——> 用于随机移动
-        self.wait = True           # 记录本轮是否一个包都没收到 ——> 用于计算delay
-        self.throughput = 0        # 上一统计周期的吞吐量，bit  ——> 用于PF算法计算优先级
-        self.buffersize = 0        # 缓冲区大小，bit  ——> 用于PF算法计算优先级
-
-    def gen_request(self, buffer_index: int):
-        """产生本业务的随机数据包请求
-
-        Parameters:
-        ------- 
-           buffer_index: 该请求在基站buffer中的index
-
-           duration: 当前TTI所在时刻，ms
-
-        Return:
-           pkts: 请求的pkt列表
-        """
-
-        # 判断包是否到达
-        if self.duration < self.interval:
-            self.duration += 1
-            return None
-
-        self.duration = 0 # 重置duration
-                
-        # 更新下一个包到达间隔
-        self.interval = np.ceil(self.interval_distribution.rvs())
-
-        # 进入用户请求列表
-        if len(self.request_list) == 0:
-            index1 = 0 # 该请求在UE侧的index
-        else:
-            index1 = self.request_list[-1].ue_index + 1
-        pkt = Packet(self.id, index1, buffer_index, self.slice, self.avg_size)
-        
-        # 统计
-        self.total_request_pkt_num += 1
-        self.period_request_pkt_num += 1
-
-        return pkt
-    
-    def randomMove(self):
-        """用户随机移动
-        """
-
-        # 每1s移动一次
-        self.removeCount = (self.removeCount + 1) % round(1*1000/self.tti)
-        if self.removeCount != 0:
-            return
-
-        # 不同业务用户移动规律不同
-        if self.slice == 'eMBB':
-            self.distance += np.random.randint(-1, 2)
-        elif self.slice == 'URLLC':
-            self.distance += np.random.randint(-1, 2)
-        elif self.slice == 'mMTC':
-            self.distance += np.random.randint(-1, 2)
-        else:
-            print('type error in UE.randomMove()\n')
-            exit()
-        
-        # 限制距离在0~160m之内
-        self.distance = min(self.distance, 160)
-        self.distance = max(self.distance, 1)
-    
-    def loss_pkt(self, packet: Packet):
-        """因基站缓冲区满导致丢包
-        """
-
-        self.loss_pkt_num += 1
-        del packet
-    
-    def receive_pkt(self, packet: Packet):
-        """收到请求的数据包
-
-        Parameters:
-        ------- 
-           ue_index: 该请求在UE侧的index
-        """
-        
-        # 滑动平均QoE时延
-        self.delay = 0.5*self.delay + 0.5*packet.delay if self.delay is not None else packet.delay
-
-        # 记录已发送的pkt序号
-        self.received.append(packet)
-
-        # 统计
-        self.total_receive_pkt_num += 1
-        self.period_receive_pkt_num += 1
-        self.throughput += packet.size
-    
-    def reset_statistic(self):
-        """重置统计信息
-        """
-
-        self.delay = None
-        self.period_receive_pkt_num = 0
-        self.period_request_pkt_num = 0
-        self.period_schedule_time = 0
-        self.loss_pkt_num = 0
-        self.period_avg_prb = 0
-
-    def reset(self):
-        """关闭用户，清除数据
-        """
-
-        # 清除缓冲区
-        for pkt in self.request_list:
-            del pkt
-        self.request_list.clear()
-        self.received = []
-
-        # 重置统计数据
-        self.delay = None                 # 平均时延，ms
-        self.loss_pkt_num = 0             # 丢包数
-        self.period_avg_prb = 0           # 统计周期内平均分得的PRB数量
-        self.period_schedule_time = 0     # 统计周期内被调度次数
-        self.total_request_pkt_num = 0    # 总请求数
-        self.total_receive_pkt_num = 0    # 总接收数
-        self.period_request_pkt_num = 0   # 统计周期内请求数
-        self.period_receive_pkt_num = 0   # 统计周期内接收数
-
-        # 重置其他量
-        self.interval = 100        # 请求达到间隔，初始为100ms ——> 用于判断是否来包
-        self.lastT = 0             # 上一次请求到达时刻 ——> 用于判断是否来包
-        self.max_pkt_per_tti = 10  # 每个TTI的最大请求数量 ——> 用于时域调度
-        self.requestPRB = 0        # 根据buffer计算的PRB需求
-        self.prb = 0               # 分得的PRB个数
-        self.removeCount = 0       # 记录TTI数量，每10000个TTI(5s)进行一次移动 ——> 用于随机移动
-        self.wait = True           # 记录本轮是否一个包都没收到 ——> 用于计算delay
-        self.throughput = 0        # 上一统计周期的吞吐量，bit  ——> 用于PF算法计算优先级
-        self.buffersize = 0        # 缓冲区大小，bit  ——> 用于PF算法计算优先级
-
-    
-    def clear_satisfied_request(self):
-        """缓冲区清除已收到的请求
-        """
-
-        if len(self.received) != 0:
-            for pkt in self.received:
-                self.request_list.remove(pkt)
-        self.received = []
-        
 
 
 class gNB(object):
@@ -285,7 +55,7 @@ class gNB(object):
         self.pkt_buffer = deque()                # 切片公用的请求缓冲区
         self.BUFFERSIZE = 3000                   # 缓冲区大小
         self.totalPRB = 100                      # 可用prb总数
-        self.bandPRB = 2e5                       # per PRB 带宽，hz
+        self.bandPRB = 1.8e5                     # per PRB 带宽，hz
         self.frequency = 2000                    # 载波频率，Mhz
         self.transP = 46                         # 发射功率，dBm
         self.AWGN = -174                         # 加性高斯白噪声功率，dBm/hz
@@ -317,32 +87,30 @@ class gNB(object):
         self.prb_utilization = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]  
         
         # 时域调度策略
-        if TD_schedule == 'RR_select':
-            self.TD_policy = RR_select(prb_config)
-        elif TD_schedule == 'TokenBucket':
-            self.TD_policy = TokenBucket(bucket_config) 
-        self.sleep = [False] * 3 # 休眠
-            
-        # RL agent
-        if RL_agent == 'PPO':
-            from RL_policy.ppo import PPO
-            self.RL_agent = PPO
-        elif RL_agent == 'TD3':
-            from RL_policy.td3 import TD3
-            self.RL_agent = TD3
-        elif RL_agent == 'DQN':
-            from RL_policy.dqn import DQN
-            self.RL_agent = DQN
+        if TD_schedule == 'TokenBucket':
+            self.TD_policy = TokenBucket(bucket_config)
         else:
-            self.RL_agent = None
+            raise ValueError(f'{TD_schedule} not implemented!')
+        self.sleep = [False] * 3 # 休眠
 
         # 频域调度策略 
-        if FD_schedule == 'RR_slice':
-            self.FD_policy = RR_slice_FD()
-        elif FD_schedule == 'RR':
+        if FD_schedule == 'RR':
             self.FD_policy = RR_FD()
-        elif FD_schedule == 'PF':
-            self.FD_policy = PF_FD()
+        else:
+            raise ValueError(f'{FD_schedule} not implemented!')
+            
+        # # RL agent
+        # if RL_agent == 'PPO':
+        #     from RL_policy.ppo import PPO
+        #     self.RL_agent = PPO
+        # elif RL_agent == 'TD3':
+        #     from RL_policy.td3 import TD3
+        #     self.RL_agent = TD3
+        # elif RL_agent == 'DQN':
+        #     from RL_policy.dqn import DQN
+        #     self.RL_agent = DQN
+        # else:
+        #     self.RL_agent = None
 
         # 其他
         self.start_time = 0        # 每轮的开始时刻，ms
@@ -464,9 +232,11 @@ class gNB(object):
 
             # https://www.cnblogs.com/jobgeo/p/5202625.html#:~:text=%E8%87%AA%E7%94%B1%E7%A9%BA%E9%97%B4%E6%8D%9F%E8%80%97%E6%98%AF%E6%8C%87%E7%94%B5%E7%A3%81%E6%B3%A2%E5%9C%A8%E4%BC%A0%E8%BE%93%E8%B7%AF%E5%BE%84%E4%B8%AD%E7%9A%84%E8%A1%B0%E8%90%BD%2C%E8%AE%A1%E7%AE%97%E5%85%AC%E5%BC%8F%E5%A6%82%E4%B8%8B%EF%BC%9A,Lbf%3D32.5%2B20lgF%2B20lgD
             # https://www.zhihu.com/question/32326772
-            Lbf = 32.5 + 20*np.log10(ue.distance + 1e-3) + 20*np.log10(self.frequency + 1e-3) # 路径损耗
-            noiseP = self.AWGN * (ue.prb * self.bandPRB) # 噪声功率
-            ue.snr = dBm2W(self.transP - Lbf) / (dBm2W(noiseP) + 1e-3)
+            if ue.distance > 10:
+                Lbf = 32.5 + 20*np.log10(ue.distance) + 20*np.log10(self.frequency) # 路径损耗
+            else:
+                Lbf = 52.5 + 20*np.log10(self.frequency) # 路径损耗
+            ue.snr = dBm2W(self.transP - Lbf) / (dBm2W(self.AWGN))
 
             pdcprate = self.bandPRB * np.log2(1 + ue.snr)
             ue.pdcprate = pdcprate

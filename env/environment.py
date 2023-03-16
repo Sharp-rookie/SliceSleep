@@ -3,17 +3,14 @@ import time
 import numpy as np
 
 from utils import setup_seed
-from .components import gNB
+from .BS import gNB
 
 
-__all__ = [
-    'Environment',
-    ]
 current_t = time.strftime('%Y_%m_%d_%H_%M_%S', time.localtime())
 
 class args:
     def __init__(self):
-        self.tti =1
+        self.tti =1 # ms
         self.TD_schedule = 'TokenBucket'
         self.FD_schedule = 'RR'
         self.avg_interval = [50, 200, 300] # TTI
@@ -22,11 +19,6 @@ class args:
         self.seed = 729
         self.log_path = f'log/gnb_log_{current_t}.csv'
 
-def offset_reward(offset, offset_min):
-    return (1 / (1+np.exp(10*(offset-0.3)))) / (1 / (1+np.exp(10*(offset_min-0.3))))
-
-def qos_penalty(delay, delay_qos):
-    return -(delay)/100 if delay > delay_qos else 0
 
 class Environment(object):
     """Environment for RL agent
@@ -36,6 +28,7 @@ class Environment(object):
         
         arg = args()
 
+        # 调整切片用户数量
         if ue_number:
             arg.ue_number = ue_number
 

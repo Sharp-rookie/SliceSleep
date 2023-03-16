@@ -9,8 +9,8 @@ from utils import plot_result
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='TD3', help='Model: TD3, PPO, DDPG, SAC')
-    parser.add_argument('--ue_num', type=int, default=3, help='UE Number: 3, 6, 9, 12, 15')
+    parser.add_argument('--model', type=str, default='PPO', help='Model: TD3, PPO, DDPG, SAC')
+    parser.add_argument('--ue_num', type=int, default=5, help='UE Number')
     parser.add_argument('--device', type=str, default='cuda:1', help='Device')
     parser.add_argument('--max_episode', type=int, default=10000, help='Max training episodes')
     parser.add_argument('--max_iter', type=int, default=150, help='Max iteration in one episode')

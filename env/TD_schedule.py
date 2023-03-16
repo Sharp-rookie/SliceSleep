@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-__all__ = [
-    'TokenBucket', 
-    'RR_select',
-    ]
-
 
 class Bucket():
     """
@@ -90,6 +85,7 @@ class TokenBucket(object):
             return [True]*3
 
         # statistic
+        # TODO: 这里应该统计整体的频带利用率，单个的无意义
         if eMBB:
             prb_utilization[1][0] += sum(self.reservedPRB)
         if URLLC:
@@ -129,34 +125,3 @@ class TokenBucket(object):
         self.lastTTI = [0 for _ in range(len(self.buckets))]
         self.currentTTI = [0 for _ in range(len(self.buckets))]
         self.stay_time = [1 for _ in range(len(self.buckets))]
-                
-        
-
-class RR_select(object):
-
-    def __init__(self, reservedPRB: list):
-        self.name = 'RR_select'
-        self.reservedPRB = reservedPRB # prb for [eMBB, URLLC, mMTC]
-
-    def schedule(self, gnb, prb_utilization) -> list:
-        """
-        Schedule the data flow
-        """
-        
-        # check if the activeUEs is full
-        if len(gnb.activeUEs) == gnb.MAX_ACTIVE_UE:
-            return [False]*3
-
-        # select the activeUEs
-        while len(gnb.activeUEs)<gnb.MAX_ACTIVE_UE and len(gnb.activeUEs)<gnb.ueNum:
-            if gnb.UEs[gnb.lastUE_id] not in gnb.activeUEs:
-                gnb.activeUEs.append(gnb.UEs[gnb.lastUE_id])
-                gnb.UEs[gnb.lastUE_id].period_schedule_time += 1
-            
-            gnb.lastUE_id = (gnb.lastUE_id+1)%gnb.ueNum
-        
-        return [False]*3
-
-    def reset(self):
-        
-        pass
