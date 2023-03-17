@@ -1,49 +1,74 @@
 # -*- coding: utf-8 -*-
 
 
-slice = ['eMBB', 'URLLC', 'mMTC']
+class Scheme(object):
+
+    def __init__(self, ueid, trans_rate):
+        self.ueid = ueid               # ueid in BS side
+        self.trans_rate = trans_rate   # transmitting rate
+        self.packets = []              # selected packets
+        self.requiredRB = 0            # required RB number
+        self.reservedRB = 0            # reserved RB number
+
 
 class RR_FD(object):
-    """频域 Round Robin 调度算法"""
+    """Round Robin algorithm for frequency domain schedule"""
 
     def __init__(self):
-
         self.name = 'RR'
 
-    def schedule(self, reservedPRB: list, activeUEs: list, prb_statistic: list):
-        """不区分业务，统一做RR mode调度
+    def checkUEBufferInfo(self, gnb, active_UE, result):
+        """Calculate the required RB number of active UE"""
 
-        Parameters:
-        ------- 
-            reservedPRB: 每个业务的预留PRB个数
-            activateUEs: 活跃用户列表
-            prb_statistic: PRB统计信息
-        """ 
-
-        if len(activeUEs) == 0:
+        if len(active_UE) == 0:
             return
+        
+        for ueid, ue_scheme in result.items():
+            
+            size = 0
+            for pkt in ue_scheme.packets:
+                size += pkt.size
+            ue_scheme.requiredRB = size / (ue_scheme.trans_rate * (gnb.tti/1000))
 
-        totalPRB = sum(reservedPRB)
+    def schedule(self, gnb):
+        """Allocate RB for UE to which selected packets belong""" 
 
-        # 统计可用PRB数量
-        if 'eMBB' in [ue.slice for ue in activeUEs]:
-            prb_statistic[1][0] += totalPRB
-        if 'URLLC' in [ue.slice for ue in activeUEs]:
-            prb_statistic[1][1] += totalPRB
-        if 'mMTC' in [ue.slice for ue in activeUEs]:
-            prb_statistic[1][2] += totalPRB
+        if len(gnb.scheduling_queue) == 0:
+            return None
 
-        # allot prb
-        sacrified = False
-        while totalPRB != 0 and not sacrified:
-            sacrified = True
-            for ue in activeUEs:
-                sliceid = slice.index(ue.slice)
+        # init the UE info to which selected packets belong
+        result = dict()
+        active_UE = []
+        for pkt in gnb.scheduling_queue:
+            if pkt.ueid not in active_UE:
+                active_UE.append(pkt.ueid)
+                result[pkt.ueid] = Scheme(pkt.ueid, gnb.UE[pkt.ueid].trans_rate)
+            
+            result[pkt.ueid].packets.append(pkt)
+        
+        # check UE required RB number
+        self.checkUEBufferInfo(gnb, active_UE, result)
+
+        # allocate prb
+        totalPRB = gnb.total_PRB
+        satisfied = False
+        while totalPRB > 0 and not satisfied:
+            satisfied = True
+            for ueid in active_UE:
+                ue_scheme = result[ueid]
+
                 if totalPRB <= 0:
                     break
-                if ue.prb-ue.requestPRB <= 0:
-                    sacrified = False
-                    ue.prb += 1
+                
+                if ue_scheme.reservedRB < ue_scheme.requiredRB:
+                    satisfied = False
+                    ue_scheme.reservedRB += 1
                     totalPRB -= 1
-                    prb_statistic[0][sliceid] += 1
-                    ue.period_avg_prb += 1
+        
+        # statistic
+        gnb.prb_usage += gnb.total_PRB - totalPRB
+
+        # clear scheduling queue, no matter whether the packet could be sent back
+        gnb.scheduling_queue = []
+
+        return result

@@ -2,44 +2,33 @@
 import numpy as np
 
 
-class Bucket():
-    """
-    The Token Bucket Shaper of severy data flows (Namely, a slice)
-    """
+class SleepController(object):
+    """Slice sleep controller"""
 
     def __init__(self, config: list):
 
-        # properties
-        self.rate = config[0] # the rate of the bucket
-        self.reservedPRB = config[1] # reserved PRB for this slice
-        self.offset = config[2] # the offset of the bucket
+        self.period = config[0]          # the period of a scheduling cycle
+        self.wakeup_ratio = config[1]    # the time duration ratio of the wake-up mode
 
     def reset(self, config: list):
-        """
-        Reset the bucket
-        """
+        """Reset the bucket"""
 
-        self.rate = config[0]
-        self.reservedPRB = config[1]
-        self.offset = config[2]
+        self.period = config[0]
+        self.wakeup_ratio = config[1]
 
 
 class TokenBucket(object):
-    """ Token Bucket Policy"""
 
     def __init__(self, bucket_config: list):
-        self.name = 'TokenBucket'
-        self.buckets =  [Bucket(config) for config in bucket_config]
         
-        # 计时变量
+        self.buckets =  [SleepController(config) for config in bucket_config]
+        
+        # time counter
         self.lastTTI = [0 for _ in range(len(self.buckets))]
         self.currentTTI = [0 for _ in range(len(self.buckets))]
         self.stay_time = [1 for _ in range(len(self.buckets))]
 
-        # prb for [eMBB, URLLC, mMTC]
-        self.reservedPRB = [self.buckets[i].reservedPRB for i in range(len(self.buckets))]
-    
-    def is_token_arrival(self, bucketID) -> bool:
+    def check_token(self, bucketID) -> bool:
         """
         Check if the token is arrived
         """
@@ -52,76 +41,48 @@ class TokenBucket(object):
 
         # calculate stay time
         bucket = self.buckets[bucketID]
-        stay_tti = int(np.ceil(bucket.rate * bucket.offset))
+        stay_tti = int(np.ceil(bucket.period * bucket.wakeup_ratio))
 
         # check stay time
         if self.stay_time[bucketID] < stay_tti:
             self.stay_time[bucketID] += 1
-            return True
+            return True  # wake-up
         
         # check token arrival
-        if (self.currentTTI[bucketID] - self.lastTTI[bucketID]) % bucket.rate == 0:
+        if (self.currentTTI[bucketID] - self.lastTTI[bucketID]) % bucket.period == 0:
             self.stay_time[bucketID] = 1
             self.lastTTI[bucketID] = self.currentTTI[bucketID]
-            return True
+            return True  # wake-up
         
-        return False
+        return False  # sleep
     
-    def schedule(self, gnb, prb_utilization) -> list:
-        """
-        Schedule the data flow
-        """
+    def schedule(self, gnb) -> list:
+        """Select the UE for scheduling queue"""
 
-        # check if the activeUEs list is full
-        if len(gnb.activeUEs) == gnb.MAX_ACTIVE_UE:
-            return [False]*3
-            
-        # check if the token is arrived
-        eMBB = True if self.is_token_arrival(0) else False
-        URLLC = True if self.is_token_arrival(1) else False
-        mMTC = True if self.is_token_arrival(2) else False
+        # check if the scheduling queue is full
+        assert len(gnb.scheduling_queue) == 0, f"scheduling queue must clear after scheduling in each TTI"
+        
+        # check if the slice if wake-up(True)
+        eMBB = True if self.check_token(0) else False
+        URLLC = True if self.check_token(1) else False
+        mMTC = True if self.check_token(2) else False
 
         if not eMBB and not URLLC and not mMTC:
-            return [True]*3
-
-        # statistic
-        # TODO: 这里应该统计整体的频带利用率，单个的无意义
-        if eMBB:
-            prb_utilization[1][0] += sum(self.reservedPRB)
-        if URLLC:
-            prb_utilization[1][1] += sum(self.reservedPRB)
-        if mMTC:
-            prb_utilization[1][2] += sum(self.reservedPRB)
-
-        # select the activeUEs
-        current_lastUE_id = gnb.lastUE_id
-        while len(gnb.activeUEs)<gnb.MAX_ACTIVE_UE and len(gnb.activeUEs)<gnb.ueNum:
-            ue = gnb.UEs[gnb.lastUE_id]
-            if ue not in gnb.activeUEs:
-                if ue.slice == 'eMBB' and eMBB:
-                    gnb.activeUEs.append(ue)
-                    ue.period_schedule_time += 1
-
-                elif ue.slice == 'URLLC' and URLLC:
-                    gnb.activeUEs.append(ue)
-                    ue.period_schedule_time += 1
-                    
-                elif ue.slice == 'mMTC' and mMTC:
-                    gnb.activeUEs.append(ue)
-                    ue.period_schedule_time += 1
-                
-                else:
-                    # print(ue.id, 'token missing')
-                    pass
+            return [True]*3  # deep sleep mode
+        
+        # select the request to be scheduled in this TTI
+        for pkt in gnb.pkt_buffer:
             
-            gnb.lastUE_id = (gnb.lastUE_id+1)%gnb.ueNum
-
-            if current_lastUE_id == gnb.lastUE_id: # 已经遍历了所有UE
+            if len(gnb.scheduling_queue) >= gnb.scheduling_num:
                 break
+            
+            if pkt.slice == 'eMBB' and eMBB:
+                gnb.scheduling_queue.append(pkt)
 
-        return [not eMBB, not URLLC, not mMTC]
+            elif pkt.slice == 'URLLC' and URLLC:
+                gnb.scheduling_queue.append(pkt)
+                
+            elif pkt.slice == 'mMTC' and mMTC:
+                gnb.scheduling_queue.append(pkt)
 
-    def reset(self):
-        self.lastTTI = [0 for _ in range(len(self.buckets))]
-        self.currentTTI = [0 for _ in range(len(self.buckets))]
-        self.stay_time = [1 for _ in range(len(self.buckets))]
+        return [not eMBB, not URLLC, not mMTC]  # sleep--True, wake-up--False

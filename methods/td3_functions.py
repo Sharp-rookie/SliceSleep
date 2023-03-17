@@ -11,6 +11,7 @@ from models import TD3
 
 def train_td3(
         env,
+        action_space,
         log_dir="log/ue_3/TD3/",
         save_interval=100,
         gamma = 0.99,
@@ -30,7 +31,6 @@ def train_td3(
     ####### TD3 hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
     action_dim = len(action_space)
 
     polyak = 0.995      # target policy update parameter (1-tau)
@@ -135,6 +135,7 @@ def train_td3(
 
 def test_td3(
         env,
+        action_space,
         test_dir="test/ue_3/TD3/",
         max_episodes=1,
         max_iters=1500,
@@ -149,7 +150,6 @@ def test_td3(
     ####### initialize environment hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
     action_dim = len(action_space)
     max_action = max(action_space)
 

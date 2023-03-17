@@ -30,8 +30,7 @@ def train_ppo(
     ####### PPO hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
-    action_dim = len(action_space)
+    action_dim = 9
 
     K_epochs = 80      # update policy for K epochs in one PPO update
     eps_clip = 0.2     # clip parameter for PPO
@@ -72,8 +71,8 @@ def train_ppo(
 
             # select action with policy
             action = [ppo_agent1.select_action(state), ppo_agent2.select_action(state), ppo_agent3.select_action(state)]
-            state, rewards, dones = env.step([action_space[action[0]], action_space[action[1]], action_space[action[2]]])
-            state = torch.Tensor(state).to(device)
+            next_state, rewards, dones = env.step(action)
+            state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)
             dones = torch.Tensor(dones).float().to(device)
             
@@ -141,8 +140,7 @@ def test_ppo(
     ####### initialize environment hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
-    action_dim = len(action_space)
+    action_dim = 9
 
     ################# testing procedure ################
 
@@ -187,8 +185,8 @@ def test_ppo(
 
             # select action with policy
             action = [ppo_agent1.select_action(state), ppo_agent2.select_action(state), ppo_agent3.select_action(state)]
-            next_state, rewards, _ = env.step([action_space[action[0]], action_space[action[1]], action_space[action[2]]])
-            state = torch.Tensor(state).to(device)
+            next_state, rewards, _ = env.step([action])
+            state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)
             dones = torch.Tensor(dones).float().to(device)
 

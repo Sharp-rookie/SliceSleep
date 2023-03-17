@@ -11,6 +11,7 @@ from models import SAC
 
 def train_sac(
         env,
+        action_space,
         log_dir="log/ue_3/SAC/",
         save_interval=100,
         gamma = 0.99,
@@ -30,7 +31,6 @@ def train_sac(
     ####### SAC hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
     action_dim = len(action_space)
 
     polyak = 0.995      # target policy update parameter (1-tau)
@@ -133,6 +133,7 @@ def train_sac(
 
 def test_sac(
         env,
+        action_space,
         test_dir="test/ue_3/SAC/",
         max_episodes=1,
         max_iters=1500,
@@ -147,7 +148,6 @@ def test_sac(
     ####### initialize environment hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
     action_dim = len(action_space)
     max_action = max(action_space)
 

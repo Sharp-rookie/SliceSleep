@@ -1,1 +1,1 @@
-from .environment import Environment, current_t
+from .environment import Environment

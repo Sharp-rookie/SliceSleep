@@ -11,6 +11,7 @@ from models import DDPG
 
 def train_ddpg(
         env,
+        action_space,
         log_dir="log/ue_3/DDPG/",
         save_interval=100,
         gamma = 0.99,
@@ -22,7 +23,7 @@ def train_ddpg(
         noise_decay_rate=0.05,
         min_noise=0.1,
         noise_decay_freq=50,
-        device='cpu'
+        device='cpu',
     ):
     
     print("============================================================================================")
@@ -30,7 +31,6 @@ def train_ddpg(
     ####### DDPG hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
     action_dim = len(action_space)
 
     polyak = 0.995      # target policy update parameter (1-tau)
@@ -133,6 +133,7 @@ def train_ddpg(
 
 def test_ddpg(
         env,
+        action_space,
         test_dir="test/ue_3/DDPG/",
         max_episodes=1,
         max_iters=1500,
@@ -147,7 +148,6 @@ def test_ddpg(
     ####### initialize environment hyperparameters ######
 
     state_dim = 6
-    action_space = [-1, 0, 1]
     action_dim = len(action_space)
     max_action = max(action_space)
 

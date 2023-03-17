@@ -68,13 +68,14 @@ class PolicyNetwork(nn.Module):
         
         self.mean_linear = nn.Linear(64, num_actions)
         self.log_std_linear = nn.Linear(64, num_actions)
+        self.softmax = nn.Softmax(dim=-1)
         
     def forward(self, state):
 
         x = self.backbone(state)
         
-        mean    = self.mean_linear(x)
-        log_std = self.log_std_linear(x)
+        mean    = self.softmax(self.mean_linear(x))
+        log_std = self.softmax(self.log_std_linear(x))
         log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
         
         return mean, log_std
