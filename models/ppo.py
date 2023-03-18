@@ -9,14 +9,35 @@ import warnings;warnings.simplefilter('ignore')
 
 ################################## PPO Policy ##################################
 class RolloutBuffer:
-    def __init__(self):
+    def __init__(self, log_dir, id=0):
         self.actions = []
         self.states = []
         self.logprobs = []
         self.rewards = []
         self.is_terminals = []
+        
+        if log_dir:
+            log_file = log_dir + f"_pool{id}" + ".csv"
+            self.log_f = open(log_file, "w+")
+            self.log_f.write('dv1,dv2,dv3,offset1,offset2,offset3,action,reward,done,\n')
+        else:
+            self.log_f = None
     
     def clear(self):
+        
+        if self.log_f:
+            for i in range(len(self.states)):
+                for item in [self.states[i], self.actions[i], self.rewards[i], self.is_terminals[i]]:
+                    if isinstance(item.cpu().tolist(), list):
+                        for i in item:
+                            self.log_f.write(f'{i},')
+                    elif isinstance(item.cpu().tolist(), float):
+                        self.log_f.write(f'{item},')
+                    elif isinstance(item.cpu().tolist(), int):
+                        self.log_f.write(f'{item},')
+                self.log_f.write(f'\n')   
+            self.log_f.flush()
+        
         del self.actions[:]
         del self.states[:]
         del self.logprobs[:]
@@ -80,7 +101,7 @@ class ActorCritic(nn.Module):
 
 
 class PPO(nn.Module):
-    def __init__(self, state_dim, action_dim, lr_actor=3e-4, lr_critic=1e-3, gamma=0.99, K_epochs=80, eps_clip=0.2, device='cpu'):
+    def __init__(self, state_dim, action_dim, lr_actor=3e-4, lr_critic=1e-3, gamma=0.99, K_epochs=80, eps_clip=0.2, device='cpu', log_file=None, id=1):
         super(PPO, self).__init__()
 
         self.gamma = gamma
@@ -88,7 +109,7 @@ class PPO(nn.Module):
         self.K_epochs = K_epochs
         self.device = device
         
-        self.buffer = RolloutBuffer()
+        self.buffer = RolloutBuffer(log_file, id)
 
         self.policy = ActorCritic(state_dim, action_dim)
         self.optimizer = optim.Adam([

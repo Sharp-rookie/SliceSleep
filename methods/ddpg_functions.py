@@ -59,8 +59,8 @@ def train_ddpg(
         ep_reward = [0 for _ in range(3)]
 
         env.reset()
-        env.gnb.transP = 46
-        state = torch.Tensor(env.get_state()).to(device)
+        env.BS.transP = 46
+        state = torch.Tensor([1. for _ in range(state_dim)]).to(device)
 
         for iter in range(1, max_iters+1):
 
@@ -90,7 +90,7 @@ def train_ddpg(
 
             # tqdm
             cost_time = time_delta(start_time)
-            pbar.set_postfix_str(f'T={env.gnb.TD_policy.buckets[0].rate}ms, [{env.gnb.TD_policy.buckets[0].offset*100:.0f}%, {env.gnb.TD_policy.buckets[1].offset*100:.0f}%, {env.gnb.TD_policy.buckets[2].offset*100:.0f}%], [{round(env.gnb.datavolume[0]/1e3,2)}, {round(env.gnb.datavolume[1]/1e3,2)}, {round(env.gnb.datavolume[2]/1e3,2)}]B, [{env.gnb.delay[0]:.2f}, {env.gnb.delay[1]:.2f}, {env.gnb.delay[2]:.2f}]ms, [{rewards[0]:.2f}, {rewards[1]:.2f}, {rewards[2]:.2f}], {cost_time}\33[0m')
+            pbar.set_postfix_str(f'T={env.BS.TD_policy.buckets[0].period}ms, [{env.BS.TD_policy.buckets[0].wakeup_ratio*100:.0f}%, {env.BS.TD_policy.buckets[1].wakeup_ratio*100:.0f}%, {env.BS.TD_policy.buckets[2].wakeup_ratio*100:.0f}%], [{round(env.BS.datavolume[0]/1e3,2)}, {round(env.BS.datavolume[1]/1e3,2)}, {round(env.BS.datavolume[2]/1e3,2)}]B, [{env.BS.delay[0]:.2f}, {env.BS.delay[1]:.2f}, {env.BS.delay[2]:.2f}]ms, [{rewards[0]:.2f}, {rewards[1]:.2f}, {rewards[2]:.2f}], {cost_time}\33[0m')
             pbar.update()
 
             # update ddpg_agent when episode is done
@@ -108,7 +108,7 @@ def train_ddpg(
                     elif i == 2:
                         ddpg_agent3.update(iter, batch_size, gamma, polyak)
                         
-                    env.gnb.TD_policy.buckets[i].offset = 5*np.random.randint(1,20)/100
+                    env.BS.TD_policy.buckets[i].wakeup_ratio = 1.
         
         # logging updates
         log_f.write(f'{episode},{ep_reward[0]},{ep_reward[1]},{ep_reward[2]}\n')
@@ -184,8 +184,8 @@ def test_ddpg(
         env.reset()
         pbar.reset()
 
-        env.gnb.transP = 46
-        state = torch.Tensor(env.get_state()).to(device)
+        env.BS.transP = 46
+        state = torch.Tensor([1. for _ in range(state_dim)]).to(device)
 
         for t in range(1, max_iters+1):
 
@@ -202,11 +202,11 @@ def test_ddpg(
                 ep_reward[i] += rewards[i]
                 datavolume[i] = np.mean(env.datavolume[i])
                 delay[i] = np.mean(env.delay[i])
-                offset[i] = env.gnb.TD_policy.buckets[i].offset
+                offset[i] = env.BS.TD_policy.buckets[i].wakeup_ratio
 
             # tqdm
             cost_time = time_delta(start_time)
-            pbar.set_postfix_str(f'T={env.gnb.TD_policy.buckets[0].rate}ms, [{env.gnb.TD_policy.buckets[0].offset*100:.0f}%, {env.gnb.TD_policy.buckets[1].offset*100:.0f}%, {env.gnb.TD_policy.buckets[2].offset*100:.0f}%], [{round(env.gnb.datavolume[0]/1e3,2)}, {round(env.gnb.datavolume[1]/1e3,2)}, {round(env.gnb.datavolume[2]/1e3,2)}]kB, [{env.gnb.delay[0]:.2f}, {env.gnb.delay[1]:.2f}, {env.gnb.delay[2]:.2f}]ms, [{rewards[0]:.2f}, {rewards[1]:.2f}, {rewards[2]:.2f}], {cost_time}\33[0m')
+            pbar.set_postfix_str(f'T={env.BS.TD_policy.buckets[0].period}ms, [{env.BS.TD_policy.buckets[0].wakeup_ratio*100:.0f}%, {env.BS.TD_policy.buckets[1].wakeup_ratio*100:.0f}%, {env.BS.TD_policy.buckets[2].wakeup_ratio*100:.0f}%], [{round(env.BS.datavolume[0]/1e3,2)}, {round(env.BS.datavolume[1]/1e3,2)}, {round(env.BS.datavolume[2]/1e3,2)}]kB, [{env.BS.delay[0]:.2f}, {env.BS.delay[1]:.2f}, {env.BS.delay[2]:.2f}]ms, [{rewards[0]:.2f}, {rewards[1]:.2f}, {rewards[2]:.2f}], {cost_time}\33[0m')
             pbar.update()
 
             # log in logging file

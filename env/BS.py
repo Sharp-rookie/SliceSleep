@@ -36,7 +36,7 @@ class BaseStation(object):
         self.fixed_power_wake = 266.8            # fixed power (wake-up mode), W
         self.fixed_power_sleep = 10.             # fixed power (deep-sleep mode), W
         self.load_power = 40.43                  # load-related power consumption per slice,W
-        self.switch_power = 3.                   # mode-switching power consumption per slice, J/time
+        self.switch_power = 0.                   # mode-switching power consumption per slice, J/time
 
         # traffic parameters
         self.slices = ['eMBB', 'URLLC', 'mMTC']  # slice type
