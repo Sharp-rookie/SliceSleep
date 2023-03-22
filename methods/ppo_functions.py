@@ -29,13 +29,13 @@ def train_ppo(
 
     ####### PPO hyperparameters ######
 
-    state_dim = 6
+    state_dim = 1
     action_dim = 3
 
     K_epochs = 80      # update policy for K epochs in one PPO update
     eps_clip = 0.2     # clip parameter for PPO
-    lr_actor = 0.0003  # learning rate for actor network
-    lr_critic = 0.001  # learning rate for critic network
+    lr_actor = 0.005   # learning rate for actor network
+    lr_critic = 0.01   # learning rate for critic network
 
     ################# training procedure ################
 
@@ -61,8 +61,7 @@ def train_ppo(
         ep_reward = [0 for _ in range(3)]
 
         env.reset()
-        env.BS.transP = 46
-        state = torch.Tensor([1. for _ in range(state_dim)]).to(device)
+        state = torch.Tensor([[1. for _ in range(state_dim)] for _ in range(3)]).to(device)
 
         for iter in range(1, max_iters+1):
 
@@ -70,7 +69,7 @@ def train_ppo(
             pbar.set_description(f"\33[36m🌌 Epoch {episode}/{max_episodes}")
 
             # select action with policy
-            action = [ppo_agent1.select_action(state), ppo_agent2.select_action(state), ppo_agent3.select_action(state)]
+            action = [ppo_agent1.select_action(state[0]), ppo_agent2.select_action(state[1]), ppo_agent3.select_action(state[2])]
             next_state, rewards, dones = env.step(action)
             state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)
@@ -139,7 +138,7 @@ def test_ppo(
 
     ####### initialize environment hyperparameters ######
 
-    state_dim = 6
+    state_dim = 5
     action_dim = 3
 
     ################# testing procedure ################
@@ -175,8 +174,7 @@ def test_ppo(
         env.reset()
         pbar.reset()
 
-        env.BS.transP = 46
-        state = torch.Tensor([1. for _ in range(state_dim)]).to(device)
+        state = torch.Tensor([[1. for _ in range(state_dim)] for _ in range(3)]).to(device)
 
         for t in range(1, max_iters+1):
 
@@ -184,7 +182,7 @@ def test_ppo(
             pbar.set_description(f"\33[36m🌌 Epoch {ep}/{max_episodes}")
 
             # select action with policy
-            action = [ppo_agent1.select_action(state), ppo_agent2.select_action(state), ppo_agent3.select_action(state)]
+            action = [ppo_agent1.select_action(state[0]), ppo_agent2.select_action(state[1]), ppo_agent3.select_action(state[2])]
             next_state, rewards, _ = env.step([action])
             state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)

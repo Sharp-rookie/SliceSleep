@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 import warnings;warnings.simplefilter('ignore')
 
+from .common import init_normal
+
 
 ################################## PPO Policy ##################################
 class RolloutBuffer:
@@ -19,7 +21,8 @@ class RolloutBuffer:
         if log_dir:
             log_file = log_dir + f"_pool{id}" + ".csv"
             self.log_f = open(log_file, "w+")
-            self.log_f.write('dv1,dv2,dv3,offset1,offset2,offset3,action,reward,done,\n')
+            # self.log_f.write('total_data,slice_data,offset,action,reward,done,\n')
+            self.log_f.write('offset,action,reward,done,\n')
         else:
             self.log_f = None
     
@@ -30,9 +33,9 @@ class RolloutBuffer:
                 for item in [self.states[i], self.actions[i], self.rewards[i], self.is_terminals[i]]:
                     if isinstance(item.cpu().tolist(), list):
                         for i in item:
-                            self.log_f.write(f'{i},')
+                            self.log_f.write(f'{i:.2f},')
                     elif isinstance(item.cpu().tolist(), float):
-                        self.log_f.write(f'{item},')
+                        self.log_f.write(f'{item:.2f},')
                     elif isinstance(item.cpu().tolist(), int):
                         self.log_f.write(f'{item},')
                 self.log_f.write(f'\n')   
@@ -78,7 +81,7 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
     
     def act(self, state):
-
+        
         action_probs = self.actor(state)
         dist = Categorical(action_probs)
 
@@ -119,6 +122,8 @@ class PPO(nn.Module):
 
         self.policy_old = ActorCritic(state_dim, action_dim)
         self.policy_old.load_state_dict(self.policy.state_dict())
+        
+        self.apply(init_normal)
 
     def select_action(self, state):
 

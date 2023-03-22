@@ -13,7 +13,7 @@ class args:
         self.ue_number = [5, 5, 5]
         self.seed = 729
         self.bucket_config = [[160,1.], [160,1.], [160,1.]]  # [period, wakeup_ratio]
-        self.action_space = [-0.01, 0, 0.01]
+        self.action_space = [-0.025, 0, 0.025]
 
 
 class Environment(object):
@@ -37,7 +37,7 @@ class Environment(object):
             )
         
         self.tti = arg.tti
-        self.sim_duration = 3*self.BS.TD_policy.buckets[0].period # simulation duration, TTI
+        self.sim_duration = 5*self.BS.TD_policy.buckets[0].period # simulation duration, TTI
         self.action_space = arg.action_space
         
         # statistic
@@ -55,7 +55,7 @@ class Environment(object):
         """Adjust the sleep settings of the BS"""
         
         for i, bucket in enumerate(self.BS.TD_policy.buckets):
-            wakeup_ratio = round(bucket.wakeup_ratio + self.action_space[action[i]], 2)
+            wakeup_ratio = round(bucket.wakeup_ratio + self.action_space[action[i]], 3)
             wakeup_ratio = max(0, wakeup_ratio)
             wakeup_ratio = min(1, wakeup_ratio)
             bucket.wakeup_ratio = wakeup_ratio
@@ -63,16 +63,22 @@ class Environment(object):
     def get_state(self):
         """Get environment state"""
 
-        # state
-        state = []
-        for i in range(3):  # data volume
+        # data volume
+        datavolume = []
+        for i in range(3):
             # normalize
             mu = self.BS.slice_ueNum[i] * (self.BS.avg_size[i] / self.BS.avg_interval[i]) * (1000/self.tti) # bit/s
             data_vol = self.datavolume[i] / mu
             
-            state.append(data_vol)
+            datavolume.append(data_vol)
 
-        [state.append(self.BS.TD_policy.buckets[i].wakeup_ratio) for i in range(3)] # wakeup_ratio
+        # state
+        state = [[] for _ in range(3)]
+        for i in range(3):
+            # state[i].append(np.sum(datavolume))
+            # state[i].append(datavolume[i])
+            # [state[i].append(self.BS.TD_policy.buckets[j].wakeup_ratio) for j in range(3)] # wakeup_ratio
+            state[i].append(self.BS.TD_policy.buckets[i].wakeup_ratio) # wakeup_ratio
 
         return state
 
@@ -108,13 +114,17 @@ class Environment(object):
         dones = [False for _ in range(3)]
         for i in range(3):
             if self.delay[i] > qos_delay[i]:
-                reward[i] = qos_delay[i] - self.delay[i]
+                reward[i] = (qos_delay[i] - self.delay[i])
             else:
                 max_consumption = self.BS.fixed_power_wake + self.BS.load_power  # W*s  # TODO: 负载量未定义
                 real_consumption = self.fixed_consumption + self.load_consumption[i]
-                # power_saving = max_consumption - real_consumption - self.switch_consumption[i]
-                power_saving = max_consumption - real_consumption
+                power_saving = max_consumption - real_consumption - self.switch_consumption[i]
                 reward[i] = power_saving
+            
+            if self.delay[i] > qos_delay[i]:
+                reward[i] = [-1,0,1][action[i]]
+            else:
+                reward[i] = [1,0,-1][action[i]]
             
             if self.BS.TD_policy.buckets[i].wakeup_ratio == 0.:
                 dones[i] = True

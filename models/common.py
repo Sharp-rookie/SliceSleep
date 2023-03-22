@@ -5,6 +5,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def init_normal(layer):
+    if isinstance(layer, nn.Linear):
+        nn.init.normal_(layer.weight, mean=0., std=0.01)
+        nn.init.constant_(layer.bias, 0.)
+
+
 class ReplayBuffer:
     def __init__(self, max_size=5e5, log_dir=None, id=0):
         self.buffer = []
