@@ -138,21 +138,20 @@ def test_ppo(
 
     ####### initialize environment hyperparameters ######
 
-    state_dim = 5
+    state_dim = 1
     action_dim = 3
 
     ################# testing procedure ################
 
     # initialize PPO agents
-    ppo_agent1, ppo_agent2, ppo_agent3 = None, None, None
+    ppo_agent1, ppo_agent2, ppo_agent3 = PPO(state_dim, action_dim), PPO(state_dim, action_dim), PPO(state_dim, action_dim)
     for agent, weight_path in zip([ppo_agent1, ppo_agent2, ppo_agent3], [path1, path2, path3]):
-        agent = PPO(state_dim, action_dim)
-        agent.load_actor(weight_path)
+        agent.load(weight_path)
         agent.to(device)
 
     # logging file
     os.makedirs(test_dir, exist_ok=True)
-    log_file = test_dir + "log.csv"
+    log_file = test_dir + "test_log.csv"
     log_f = open(log_file, "w+")
     log_f.write('episode,timestep,offset1,datavolume1,delay1,offset2,datavolume2,delay2,offset3,datavolume3,delay3\n')
 
@@ -183,10 +182,9 @@ def test_ppo(
 
             # select action with policy
             action = [ppo_agent1.select_action(state[0]), ppo_agent2.select_action(state[1]), ppo_agent3.select_action(state[2])]
-            next_state, rewards, _ = env.step([action])
+            next_state, rewards, _ = env.step(action)
             state = torch.Tensor(next_state).to(device)
             rewards = torch.Tensor(rewards).to(device)
-            dones = torch.Tensor(dones).float().to(device)
 
             # statistic
             for i in range(3):

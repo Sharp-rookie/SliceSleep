@@ -8,12 +8,12 @@ from .BS import BaseStation
 class args:
     def __init__(self):
         self.tti = 1.  # ms
-        self.avg_interval = [50, 10, 100]  # TTI
-        self.avg_size = [300*1e3, 0.1*1e3, 40*1e3]  # B
+        self.avg_interval = [3, 90, 80]  # TTI
+        self.avg_size = [100, 300*1e3, 40*1e3]  # B
         self.ue_number = [5, 5, 5]
         self.seed = 729
         self.bucket_config = [[160,1.], [160,1.], [160,1.]]  # [period, wakeup_ratio]
-        self.action_space = [-0.025, 0, 0.025]
+        self.action_space = [-0.01, 0, 0.01]
 
 
 class Environment(object):
@@ -109,7 +109,7 @@ class Environment(object):
         state = self.get_state()
 
         # reward
-        qos_delay = [100, 20, 300] # eMBB, URLLC, mMTC
+        qos_delay = [10, 50, 30] # eMBB, URLLC, mMTC
         reward = [[] for _ in range(3)]
         dones = [False for _ in range(3)]
         for i in range(3):
